@@ -1,0 +1,10 @@
+templates/emails/appointment_confirmation.html
+{% extends "emails/base_email.html" %}
+
+{% block content %}
+<h2>Appointment Confirmed</h2>
+<p>Dear {{ patient.first_name }},</p>
+<p>Your appointment with Dr. {{ doctor.first_name }} is confirmed for {{ appointment.start_time }} on {{ appointment.date }}.</p>
+<p>Details: {{ appointment.reason_for_visit }}</p>
+<p>If you need to reschedule, log in to your account.</p>
+{% endblock %}
