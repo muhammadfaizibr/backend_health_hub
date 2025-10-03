@@ -53,7 +53,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         ('F', 'Female'),
     ]
     
-    ROLE_CHOICES = [
+    ROLE_CHOICES = [ 
         ('Patient', 'Patient'),
         ('Doctor', 'Doctor'),
         ('Translator', 'Translator'),
