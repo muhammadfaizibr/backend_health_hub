@@ -16,6 +16,8 @@ import mimetypes
 from .models import File
 from .serializers import FileSerializer, FileUploadSerializer, FileListSerializer
 from apps.base.models import User
+from apps.patients.models import Case
+from django.contrib.admin.views.decorators import staff_member_required
 
 
 class FileViewSet(viewsets.ModelViewSet):
@@ -25,21 +27,35 @@ class FileViewSet(viewsets.ModelViewSet):
     """
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ['file_type', 'is_public', 'related_to_user']
+    filterset_fields = ['file_type', 'is_public', 'related_to_user', 'case']
     parser_classes = [MultiPartParser, FormParser]
 
     def get_queryset(self):
         """Filter files based on user permissions"""
         qs = File.objects.select_related(
-            'uploaded_by', 'related_to_user', 'deleted_by'
+            'uploaded_by', 'related_to_user', 'deleted_by', 'case',
+            'case__patient__user', 'case__doctor__user'
         ).filter(deleted_at__isnull=True)
 
-        if not self.request.user.is_staff:
-            qs = qs.filter(
-                Q(uploaded_by=self.request.user) | 
-                Q(related_to_user=self.request.user) | 
+        user = self.request.user
+        
+        if not user.is_staff:
+            # Build complex query for access control
+            q_filter = (
+                Q(uploaded_by=user) | 
+                Q(related_to_user=user) | 
                 Q(is_public=True)
             )
+            
+            # Add case-based access for patients
+            if hasattr(user, 'patient_profile'):
+                q_filter |= Q(case__patient=user.patient_profile)
+            
+            # Add case-based access for doctors
+            if hasattr(user, 'doctor_profile'):
+                q_filter |= Q(case__doctor=user.doctor_profile)
+            
+            qs = qs.filter(q_filter)
         
         return qs
 
@@ -68,6 +84,7 @@ class FileViewSet(viewsets.ModelViewSet):
         is_public = serializer.validated_data.get('is_public', False)
         storage_provider = serializer.validated_data.get('storage_provider', 'local')
         related_to_user_id = serializer.validated_data.get('related_to_user_id')
+        case_id = serializer.validated_data.get('case')  # Changed from case_id to case
 
         # Resolve related_to_user
         related_to_user = None
@@ -77,6 +94,31 @@ class FileViewSet(viewsets.ModelViewSet):
             except User.DoesNotExist:
                 return Response(
                     {'error': 'Related user not found'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        # Resolve case
+        case = None
+        if case_id:
+            try:
+                case = Case.objects.get(id=case_id)
+                
+                # Verify user has access to this case
+                if not request.user.is_staff:
+                    has_access = False
+                    if hasattr(request.user, 'patient_profile') and case.patient == request.user.patient_profile:
+                        has_access = True
+                    elif hasattr(request.user, 'doctor_profile') and case.doctor == request.user.doctor_profile:
+                        has_access = True
+                    
+                    if not has_access:
+                        return Response(
+                            {'error': 'You do not have access to this case'}, 
+                            status=status.HTTP_403_FORBIDDEN
+                        )
+            except Case.DoesNotExist:
+                return Response(
+                    {'error': 'Case not found'}, 
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
@@ -92,6 +134,7 @@ class FileViewSet(viewsets.ModelViewSet):
             file_instance = File.objects.create(
                 uploaded_by=request.user,
                 related_to_user=related_to_user,
+                case=case,
                 file_type=file_type,
                 original_filename=file_obj.name,
                 file_path=saved_path,
@@ -127,8 +170,15 @@ class FileViewSet(viewsets.ModelViewSet):
         )
 
     def partial_update(self, request, *args, **kwargs):
-        """Allow updating only specific fields"""
+        """Allow updating only specific fields - only by uploader"""
         instance = self.get_object()
+        
+        # Check if user can update
+        if not instance.can_update(request.user):
+            return Response(
+                {'error': 'Only the file uploader can update this file'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
         
         # Only allow updating these fields
         allowed_fields = ['file_type', 'is_public']
@@ -152,7 +202,7 @@ class FileViewSet(viewsets.ModelViewSet):
         """Download file with proper access control"""
         file_instance = self.get_object()
 
-        # Check permissions
+        # Check permissions (includes case-based access)
         if not file_instance.can_access(request.user):
             return Response(
                 {'error': 'Permission denied'}, 
@@ -167,9 +217,6 @@ class FileViewSet(viewsets.ModelViewSet):
             )
 
         try:
-            # Get absolute path for local storage
-            file_path = default_storage.path(file_instance.file_path)
-            
             # Determine content type
             content_type = file_instance.mime_type
             if not content_type or content_type == 'application/octet-stream':
@@ -190,8 +237,15 @@ class FileViewSet(viewsets.ModelViewSet):
             )
 
     def destroy(self, request, *args, **kwargs):
-        """Soft delete file"""
+        """Soft delete file - only by uploader or staff"""
         instance = self.get_object()
+        
+        # Check if user can delete
+        if not (instance.uploaded_by == request.user or request.user.is_staff):
+            return Response(
+                {'error': 'Only the file uploader or staff can delete this file'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
         
         # Mark as deleted
         instance.deleted_at = timezone.now()
@@ -270,3 +324,33 @@ class FileViewSet(viewsets.ModelViewSet):
             safe_name = safe_name[:max_length]
         
         return f"{safe_name}{ext}"
+    
+
+@staff_member_required
+def admin_download_file(request, file_id):
+    """Download file from admin panel"""
+    try:
+        file_instance = File.objects.get(id=file_id)
+    except File.DoesNotExist:
+        raise Http404("File not found")
+
+    # Check if file exists in storage
+    if not default_storage.exists(file_instance.file_path):
+        raise Http404("File not found in storage")
+
+    try:
+        # Determine content type
+        content_type = file_instance.mime_type
+        if not content_type or content_type == 'application/octet-stream':
+            content_type = mimetypes.guess_type(file_instance.original_filename)[0] or 'application/octet-stream'
+
+        # Open and return file
+        file_handle = default_storage.open(file_instance.file_path, 'rb')
+        response = FileResponse(file_handle, content_type=content_type)
+        response['Content-Disposition'] = f'attachment; filename="{file_instance.original_filename}"'
+        response['Content-Length'] = file_instance.file_size
+        
+        return response
+
+    except Exception as e:
+        raise Http404(f"Failed to retrieve file: {str(e)}")

@@ -37,111 +37,111 @@ class Profile(models.Model):
             raise ValidationError(_('Years of experience must be between 0 and 100.'))
 
 
-class DoctorExperience(models.Model):
-    """Link table between doctors and their experiences."""
+# class DoctorExperience(models.Model):
+#     """Link table between doctors and their experiences."""
     
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    doctor = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name='doctor_experiences')
-    experience = models.ForeignKey('base.Experience', on_delete=models.CASCADE, related_name='doctor_experiences')
-    created_at = models.DateTimeField(auto_now_add=True)
+#     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+#     doctor = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name='doctor_experiences')
+#     experience = models.ForeignKey('base.Experience', on_delete=models.CASCADE, related_name='doctor_experiences')
+#     created_at = models.DateTimeField(auto_now_add=True)
 
-    class Meta:
-        verbose_name = _('doctor experience')
-        verbose_name_plural = _('doctor experiences')
-        unique_together = [['doctor', 'experience']]
-        indexes = [
-            models.Index(fields=['doctor']),
-        ]
-        ordering = ['-created_at']
+#     class Meta:
+#         verbose_name = _('doctor experience')
+#         verbose_name_plural = _('doctor experiences')
+#         unique_together = [['doctor', 'experience']]
+#         indexes = [
+#             models.Index(fields=['doctor']),
+#         ]
+#         ordering = ['-created_at']
 
-    def __str__(self):
-        return f"{self.doctor.user.get_full_name()} - {self.experience.title}"
+#     def __str__(self):
+#         return f"{self.doctor.user.get_full_name()} - {self.experience.title}"
 
 
-class DoctorEducation(models.Model):
-    """Link table between doctors and their education."""
+# class DoctorEducation(models.Model):
+#     """Link table between doctors and their education."""
     
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    doctor = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name='doctor_educations')
-    education = models.ForeignKey('base.Education', on_delete=models.CASCADE, related_name='doctor_educations')
-    created_at = models.DateTimeField(auto_now_add=True)
+#     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+#     doctor = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name='doctor_educations')
+#     education = models.ForeignKey('base.Education', on_delete=models.CASCADE, related_name='doctor_educations')
+#     created_at = models.DateTimeField(auto_now_add=True)
 
-    class Meta:
-        verbose_name = _('doctor education')
-        verbose_name_plural = _('doctor educations')
-        unique_together = [['doctor', 'education']]
-        indexes = [
-            models.Index(fields=['doctor']),
-        ]
-        ordering = ['-created_at']
+#     class Meta:
+#         verbose_name = _('doctor education')
+#         verbose_name_plural = _('doctor educations')
+#         unique_together = [['doctor', 'education']]
+#         indexes = [
+#             models.Index(fields=['doctor']),
+#         ]
+#         ordering = ['-created_at']
 
-    def __str__(self):
-        return f"{self.doctor.user.get_full_name()} - {self.education.degree}"
+#     def __str__(self):
+#         return f"{self.doctor.user.get_full_name()} - {self.education.degree}"
 
 
-class DoctorCertification(models.Model):
-    """Link table between doctors and their certifications."""
+# class DoctorCertification(models.Model):
+#     """Link table between doctors and their certifications."""
     
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    doctor = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name='doctor_certifications')
-    certification = models.ForeignKey('base.Certification', on_delete=models.CASCADE, related_name='doctor_certifications')
-    created_at = models.DateTimeField(auto_now_add=True)
+#     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+#     doctor = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name='doctor_certifications')
+#     certification = models.ForeignKey('base.Certification', on_delete=models.CASCADE, related_name='doctor_certifications')
+#     created_at = models.DateTimeField(auto_now_add=True)
 
-    class Meta:
-        verbose_name = _('doctor certification')
-        verbose_name_plural = _('doctor certifications')
-        unique_together = [['doctor', 'certification']]
-        indexes = [
-            models.Index(fields=['doctor']),
-        ]
-        ordering = ['-created_at']
+#     class Meta:
+#         verbose_name = _('doctor certification')
+#         verbose_name_plural = _('doctor certifications')
+#         unique_together = [['doctor', 'certification']]
+#         indexes = [
+#             models.Index(fields=['doctor']),
+#         ]
+#         ordering = ['-created_at']
 
-    def __str__(self):
-        return f"{self.doctor.user.get_full_name()} - {self.certification.title}"
+#     def __str__(self):
+#         return f"{self.doctor.user.get_full_name()} - {self.certification.title}"
 
 
-class ConsultationFee(models.Model):
-    """Consultation fees for doctors based on service fees."""
+# class ConsultationFee(models.Model):
+#     """Consultation fees for doctors based on service fees."""
     
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    doctor = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name='consultation_fees')
-    service_fee = models.ForeignKey('base.ServiceFee', on_delete=models.CASCADE, related_name='consultation_fees')
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+#     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+#     doctor = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name='consultation_fees')
+#     service_fee = models.ForeignKey('base.ServiceFee', on_delete=models.CASCADE, related_name='consultation_fees')
+#     created_at = models.DateTimeField(auto_now_add=True)
+#     updated_at = models.DateTimeField(auto_now=True)
 
-    class Meta:
-        verbose_name = _('consultation fee')
-        verbose_name_plural = _('consultation fees')
-        unique_together = [['doctor', 'service_fee']]
-        indexes = [
-            models.Index(fields=['doctor']),
-        ]
-        ordering = ['service_fee__duration']
+#     class Meta:
+#         verbose_name = _('consultation fee')
+#         verbose_name_plural = _('consultation fees')
+#         unique_together = [['doctor', 'service_fee']]
+#         indexes = [
+#             models.Index(fields=['doctor']),
+#         ]
+#         ordering = ['service_fee__duration']
 
-    def __str__(self):
-        return f"{self.doctor.user.get_full_name()} - {self.service_fee.get_duration_display()}"
+#     def __str__(self):
+#         return f"{self.doctor.user.get_full_name()} - {self.service_fee.get_duration_display()}"
 
 
-class DoctorAvailability(models.Model):
-    """Doctor availability based on availability slots."""
+# class DoctorAvailability(models.Model):
+#     """Doctor availability based on availability slots."""
     
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    doctor = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name='doctor_availabilities')
-    availability_slot = models.ForeignKey('base.AvailabilitySlot', on_delete=models.CASCADE, related_name='doctor_availabilities')
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+#     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+#     doctor = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name='doctor_availabilities')
+#     availability_slot = models.ForeignKey('base.AvailabilitySlot', on_delete=models.CASCADE, related_name='doctor_availabilities')
+#     created_at = models.DateTimeField(auto_now_add=True)
+#     updated_at = models.DateTimeField(auto_now=True)
 
-    class Meta:
-        verbose_name = _('doctor availability')
-        verbose_name_plural = _('doctor availabilities')
-        unique_together = [['doctor', 'availability_slot']]
-        indexes = [
-            models.Index(fields=['doctor']),
-        ]
-        ordering = ['availability_slot__day_of_week', 'availability_slot__start_time']
+#     class Meta:
+#         verbose_name = _('doctor availability')
+#         verbose_name_plural = _('doctor availabilities')
+#         unique_together = [['doctor', 'availability_slot']]
+#         indexes = [
+#             models.Index(fields=['doctor']),
+#         ]
+#         ordering = ['availability_slot__day_of_week', 'availability_slot__start_time']
 
-    def __str__(self):
-        return f"{self.doctor.user.get_full_name()} - {self.availability_slot}"
+#     def __str__(self):
+#         return f"{self.doctor.user.get_full_name()} - {self.availability_slot}"
 
 
 class Prescription(models.Model):

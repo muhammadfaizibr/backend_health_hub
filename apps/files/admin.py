@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.utils.html import format_html
 from django.urls import reverse
 from django.utils import timezone
+from django.conf import settings
 from .models import File
 
 
@@ -9,7 +10,8 @@ from .models import File
 class FileAdmin(admin.ModelAdmin):
     list_display = (
         'original_filename', 
-        'file_type', 
+        'file_type',
+        'case_link',
         'file_size_display',
         'uploaded_by', 
         'related_to_user', 
@@ -30,8 +32,10 @@ class FileAdmin(admin.ModelAdmin):
         'uploaded_by__email',
         'uploaded_by__first_name',
         'uploaded_by__last_name',
-        'related_to_user__email'
+        'related_to_user__email',
+        'case__title'
     )
+    autocomplete_fields = ['case']
     readonly_fields = (
         'id',
         'uploaded_by',
@@ -65,7 +69,8 @@ class FileAdmin(admin.ModelAdmin):
         ('Relationships', {
             'fields': (
                 'uploaded_by',
-                'related_to_user'
+                'related_to_user',
+                'case'
             )
         }),
         ('Timestamps', {
@@ -79,6 +84,20 @@ class FileAdmin(admin.ModelAdmin):
     date_hierarchy = 'uploaded_at'
     ordering = ('-uploaded_at',)
     list_per_page = 50
+
+    def case_link(self, obj):
+        """Display case as clickable link"""
+        if obj.case:
+            try:
+                # Try to get the URL - adjust 'cases' to your actual app label if different
+                url = reverse('admin:cases_case_change', args=[obj.case.id])
+                return format_html('<a href="{}">{}</a>', url, obj.case.title)
+            except:
+                # If reverse fails, just return the title
+                return obj.case.title
+        return '-'
+    case_link.short_description = 'Case'
+    case_link.admin_order_field = 'case__title'
 
     def file_size_display(self, obj):
         """Display file size in human-readable format"""
@@ -102,12 +121,14 @@ class FileAdmin(admin.ModelAdmin):
     status_display.short_description = 'Status'
 
     def download_link(self, obj):
-        """Provide download link in admin"""
-        if obj.id:
-            url = reverse('admin-download-file', args=[obj.id])
+        """Provide direct download link using media URL"""
+        if obj.id and obj.file_path:
+            # Use MEDIA_URL for direct file access
+            file_url = f"{settings.MEDIA_URL}{obj.file_path}"
             return format_html(
-                '<a href="{}" target="_blank">Download File</a>',
-                url
+                '<a href="{}" target="_blank" download="{}">Download File</a>',
+                file_url,
+                obj.original_filename
             )
         return '-'
     download_link.short_description = 'Download'
@@ -115,7 +136,14 @@ class FileAdmin(admin.ModelAdmin):
     def get_queryset(self, request):
         """Optimize queries"""
         qs = super().get_queryset(request)
-        return qs.select_related('uploaded_by', 'related_to_user', 'deleted_by')
+        return qs.select_related(
+            'uploaded_by', 
+            'related_to_user', 
+            'deleted_by',
+            'case',
+            'case__patient__user',
+            'case__doctor__user'
+        )
 
     def has_delete_permission(self, request, obj=None):
         """Only allow superusers to permanently delete"""

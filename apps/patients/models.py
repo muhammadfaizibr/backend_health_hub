@@ -105,9 +105,8 @@ class Case(models.Model):
         if self.status == 'Closed' and not self.closed_at:
             self.closed_at = timezone.now()
 
-
 class AppointmentTimeSlot(models.Model):
-    """Available time slots for doctor appointments."""
+    """Available time slots for appointments."""
     
     DURATION_CHOICES = [
         (15, '15 minutes'),
@@ -117,7 +116,8 @@ class AppointmentTimeSlot(models.Model):
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    doctor = models.ForeignKey(DoctorProfile, on_delete=models.CASCADE, related_name='time_slots')
+    case = models.ForeignKey(Case, on_delete=models.CASCADE, related_name='time_slots')
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='created_time_slots')
     date = models.DateField()
     start_time = models.TimeField()
     duration = models.IntegerField(choices=DURATION_CHOICES)
@@ -129,16 +129,17 @@ class AppointmentTimeSlot(models.Model):
     class Meta:
         verbose_name = _('appointment time slot')
         verbose_name_plural = _('appointment time slots')
-        unique_together = [['doctor', 'date', 'start_time']]
+        unique_together = [['case', 'date', 'start_time']]
         indexes = [
-            models.Index(fields=['doctor', 'date']),
-            models.Index(fields=['doctor', 'date', 'is_booked']),
+            models.Index(fields=['case', 'date']),
+            models.Index(fields=['case', 'date', 'is_booked']),
             models.Index(fields=['date', 'is_booked']),
+            models.Index(fields=['created_by']),
         ]
         ordering = ['date', 'start_time']
 
     def __str__(self):
-        return f"{self.doctor.user.get_full_name()} - {self.date} {self.start_time}"
+        return f"{self.case.title} - {self.date} {self.start_time}"
 
     def clean(self):
         """Validate time slot."""
@@ -152,8 +153,7 @@ class AppointmentTimeSlot(models.Model):
         start_datetime = datetime.combine(self.date, self.start_time)
         end_datetime = start_datetime + timedelta(minutes=self.duration)
         return end_datetime.time()
-
-
+    
 class Appointment(models.Model):
     """Patient appointment with doctor."""
     

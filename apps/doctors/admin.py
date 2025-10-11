@@ -2,8 +2,9 @@ from django.contrib import admin
 from django.utils.translation import gettext_lazy as _
 from django.db.models import Avg, Count, Q
 from .models import (
-    Profile, DoctorExperience, DoctorEducation, DoctorCertification,
-    ConsultationFee, DoctorAvailability, Prescription, PrescriptionItem, DoctorReview
+    Profile, 
+    # DoctorExperience, DoctorEducation, DoctorCertification, ConsultationFee, DoctorAvailability, 
+    Prescription, PrescriptionItem, DoctorReview
 )
 
 
@@ -67,177 +68,177 @@ class ProfileAdmin(admin.ModelAdmin):
         )
 
 
-@admin.register(DoctorExperience)
-class DoctorExperienceAdmin(admin.ModelAdmin):
-    """Admin interface for doctor experience."""
+# @admin.register(DoctorExperience)
+# class DoctorExperienceAdmin(admin.ModelAdmin):
+#     """Admin interface for doctor experience."""
     
-    list_display = ('doctor', 'experience_title', 'company', 'employment_type', 'start_date', 'end_date')
-    list_filter = ('experience__employment_type', 'experience__start_date')
-    search_fields = (
-        'doctor__user__email', 'doctor__user__first_name',
-        'experience__title', 'experience__company_or_organization'
-    )
-    readonly_fields = ('created_at',)
-    autocomplete_fields = ['doctor', 'experience']
+#     list_display = ('doctor', 'experience_title', 'company', 'employment_type', 'start_date', 'end_date')
+#     list_filter = ('experience__employment_type', 'experience__start_date')
+#     search_fields = (
+#         'doctor__user__email', 'doctor__user__first_name',
+#         'experience__title', 'experience__company_or_organization'
+#     )
+#     readonly_fields = ('created_at',)
+#     autocomplete_fields = ['doctor', 'experience']
     
-    def experience_title(self, obj):
-        return obj.experience.title
-    experience_title.short_description = 'Title'
+#     def experience_title(self, obj):
+#         return obj.experience.title
+#     experience_title.short_description = 'Title'
     
-    def company(self, obj):
-        return obj.experience.company_or_organization
-    company.short_description = 'Company'
+#     def company(self, obj):
+#         return obj.experience.company_or_organization
+#     company.short_description = 'Company'
     
-    def employment_type(self, obj):
-        return obj.experience.employment_type
-    employment_type.short_description = 'Type'
+#     def employment_type(self, obj):
+#         return obj.experience.employment_type
+#     employment_type.short_description = 'Type'
     
-    def start_date(self, obj):
-        return obj.experience.start_date
-    start_date.short_description = 'Start Date'
-    start_date.admin_order_field = 'experience__start_date'
+#     def start_date(self, obj):
+#         return obj.experience.start_date
+#     start_date.short_description = 'Start Date'
+#     start_date.admin_order_field = 'experience__start_date'
     
-    def end_date(self, obj):
-        return obj.experience.end_date
-    end_date.short_description = 'End Date'
+#     def end_date(self, obj):
+#         return obj.experience.end_date
+#     end_date.short_description = 'End Date'
     
-    def get_queryset(self, request):
-        return super().get_queryset(request).select_related('doctor__user', 'experience')
+#     def get_queryset(self, request):
+#         return super().get_queryset(request).select_related('doctor__user', 'experience')
 
 
-@admin.register(DoctorEducation)
-class DoctorEducationAdmin(admin.ModelAdmin):
-    """Admin interface for doctor education."""
+# @admin.register(DoctorEducation)
+# class DoctorEducationAdmin(admin.ModelAdmin):
+#     """Admin interface for doctor education."""
     
-    list_display = ('doctor', 'degree', 'field', 'school', 'start_date', 'end_date')
-    list_filter = ('education__field', 'education__degree', 'education__start_date')
-    search_fields = (
-        'doctor__user__email', 'doctor__user__first_name',
-        'education__school', 'education__degree', 'education__field'
-    )
-    readonly_fields = ('created_at',)
-    autocomplete_fields = ['doctor', 'education']
+#     list_display = ('doctor', 'degree', 'field', 'school', 'start_date', 'end_date')
+#     list_filter = ('education__field', 'education__degree', 'education__start_date')
+#     search_fields = (
+#         'doctor__user__email', 'doctor__user__first_name',
+#         'education__school', 'education__degree', 'education__field'
+#     )
+#     readonly_fields = ('created_at',)
+#     autocomplete_fields = ['doctor', 'education']
     
-    def degree(self, obj):
-        return obj.education.degree
-    degree.short_description = 'Degree'
+#     def degree(self, obj):
+#         return obj.education.degree
+#     degree.short_description = 'Degree'
     
-    def field(self, obj):
-        return obj.education.field
-    field.short_description = 'Field'
+#     def field(self, obj):
+#         return obj.education.field
+#     field.short_description = 'Field'
     
-    def school(self, obj):
-        return obj.education.school
-    school.short_description = 'School'
+#     def school(self, obj):
+#         return obj.education.school
+#     school.short_description = 'School'
     
-    def start_date(self, obj):
-        return obj.education.start_date
-    start_date.short_description = 'Start Date'
-    start_date.admin_order_field = 'education__start_date'
+#     def start_date(self, obj):
+#         return obj.education.start_date
+#     start_date.short_description = 'Start Date'
+#     start_date.admin_order_field = 'education__start_date'
     
-    def end_date(self, obj):
-        return obj.education.end_date
-    end_date.short_description = 'End Date'
+#     def end_date(self, obj):
+#         return obj.education.end_date
+#     end_date.short_description = 'End Date'
     
-    def get_queryset(self, request):
-        return super().get_queryset(request).select_related('doctor__user', 'education')
+#     def get_queryset(self, request):
+#         return super().get_queryset(request).select_related('doctor__user', 'education')
 
 
-@admin.register(DoctorCertification)
-class DoctorCertificationAdmin(admin.ModelAdmin):
-    """Admin interface for doctor certifications."""
+# @admin.register(DoctorCertification)
+# class DoctorCertificationAdmin(admin.ModelAdmin):
+#     """Admin interface for doctor certifications."""
     
-    list_display = ('doctor', 'title', 'issuing_organization', 'issue_date', 'expiration_date')
-    list_filter = ('certification__issue_date', 'certification__expiration_date')
-    search_fields = (
-        'doctor__user__email', 'doctor__user__first_name',
-        'certification__title', 'certification__issuing_organization'
-    )
-    readonly_fields = ('created_at',)
-    autocomplete_fields = ['doctor', 'certification']
+#     list_display = ('doctor', 'title', 'issuing_organization', 'issue_date', 'expiration_date')
+#     list_filter = ('certification__issue_date', 'certification__expiration_date')
+#     search_fields = (
+#         'doctor__user__email', 'doctor__user__first_name',
+#         'certification__title', 'certification__issuing_organization'
+#     )
+#     readonly_fields = ('created_at',)
+#     autocomplete_fields = ['doctor', 'certification']
     
-    def title(self, obj):
-        return obj.certification.title
-    title.short_description = 'Title'
+#     def title(self, obj):
+#         return obj.certification.title
+#     title.short_description = 'Title'
     
-    def issuing_organization(self, obj):
-        return obj.certification.issuing_organization
-    issuing_organization.short_description = 'Issuing Organization'
+#     def issuing_organization(self, obj):
+#         return obj.certification.issuing_organization
+#     issuing_organization.short_description = 'Issuing Organization'
     
-    def issue_date(self, obj):
-        return obj.certification.issue_date
-    issue_date.short_description = 'Issue Date'
-    issue_date.admin_order_field = 'certification__issue_date'
+#     def issue_date(self, obj):
+#         return obj.certification.issue_date
+#     issue_date.short_description = 'Issue Date'
+#     issue_date.admin_order_field = 'certification__issue_date'
     
-    def expiration_date(self, obj):
-        return obj.certification.expiration_date
-    expiration_date.short_description = 'Expiration Date'
+#     def expiration_date(self, obj):
+#         return obj.certification.expiration_date
+#     expiration_date.short_description = 'Expiration Date'
     
-    def get_queryset(self, request):
-        return super().get_queryset(request).select_related('doctor__user', 'certification')
+#     def get_queryset(self, request):
+#         return super().get_queryset(request).select_related('doctor__user', 'certification')
 
 
-@admin.register(ConsultationFee)
-class ConsultationFeeAdmin(admin.ModelAdmin):
-    """Admin interface for consultation fees."""
+# @admin.register(ConsultationFee)
+# class ConsultationFeeAdmin(admin.ModelAdmin):
+#     """Admin interface for consultation fees."""
     
-    list_display = ('doctor', 'duration', 'fee', 'currency', 'is_active')
-    list_filter = ('service_fee__duration', 'service_fee__is_active', 'service_fee__currency')
-    search_fields = ('doctor__user__email', 'doctor__user__first_name', 'doctor__user__last_name')
-    readonly_fields = ('created_at', 'updated_at')
-    autocomplete_fields = ['doctor', 'service_fee']
+#     list_display = ('doctor', 'duration', 'fee', 'currency', 'is_active')
+#     list_filter = ('service_fee__duration', 'service_fee__is_active', 'service_fee__currency')
+#     search_fields = ('doctor__user__email', 'doctor__user__first_name', 'doctor__user__last_name')
+#     readonly_fields = ('created_at', 'updated_at')
+#     autocomplete_fields = ['doctor', 'service_fee']
     
-    def duration(self, obj):
-        return obj.service_fee.get_duration_display()
-    duration.short_description = 'Duration'
+#     def duration(self, obj):
+#         return obj.service_fee.get_duration_display()
+#     duration.short_description = 'Duration'
     
-    def fee(self, obj):
-        return obj.service_fee.fee
-    fee.short_description = 'Fee'
+#     def fee(self, obj):
+#         return obj.service_fee.fee
+#     fee.short_description = 'Fee'
     
-    def currency(self, obj):
-        return obj.service_fee.currency
-    currency.short_description = 'Currency'
+#     def currency(self, obj):
+#         return obj.service_fee.currency
+#     currency.short_description = 'Currency'
     
-    def is_active(self, obj):
-        return obj.service_fee.is_active
-    is_active.short_description = 'Active'
-    is_active.boolean = True
+#     def is_active(self, obj):
+#         return obj.service_fee.is_active
+#     is_active.short_description = 'Active'
+#     is_active.boolean = True
     
-    def get_queryset(self, request):
-        return super().get_queryset(request).select_related('doctor__user', 'service_fee')
+#     def get_queryset(self, request):
+#         return super().get_queryset(request).select_related('doctor__user', 'service_fee')
 
 
-@admin.register(DoctorAvailability)
-class DoctorAvailabilityAdmin(admin.ModelAdmin):
-    """Admin interface for doctor availability."""
+# @admin.register(DoctorAvailability)
+# class DoctorAvailabilityAdmin(admin.ModelAdmin):
+#     """Admin interface for doctor availability."""
     
-    list_display = ('doctor', 'day_of_week', 'start_time', 'end_time', 'is_active')
-    list_filter = ('availability_slot__day_of_week', 'availability_slot__is_active')
-    search_fields = ('doctor__user__email', 'doctor__user__first_name', 'doctor__user__last_name')
-    readonly_fields = ('created_at', 'updated_at')
-    autocomplete_fields = ['doctor', 'availability_slot']
+#     list_display = ('doctor', 'day_of_week', 'start_time', 'end_time', 'is_active')
+#     list_filter = ('availability_slot__day_of_week', 'availability_slot__is_active')
+#     search_fields = ('doctor__user__email', 'doctor__user__first_name', 'doctor__user__last_name')
+#     readonly_fields = ('created_at', 'updated_at')
+#     autocomplete_fields = ['doctor', 'availability_slot']
     
-    def day_of_week(self, obj):
-        return obj.availability_slot.get_day_of_week_display()
-    day_of_week.short_description = 'Day'
-    day_of_week.admin_order_field = 'availability_slot__day_of_week'
+#     def day_of_week(self, obj):
+#         return obj.availability_slot.get_day_of_week_display()
+#     day_of_week.short_description = 'Day'
+#     day_of_week.admin_order_field = 'availability_slot__day_of_week'
     
-    def start_time(self, obj):
-        return obj.availability_slot.start_time
-    start_time.short_description = 'Start Time'
+#     def start_time(self, obj):
+#         return obj.availability_slot.start_time
+#     start_time.short_description = 'Start Time'
     
-    def end_time(self, obj):
-        return obj.availability_slot.end_time
-    end_time.short_description = 'End Time'
+#     def end_time(self, obj):
+#         return obj.availability_slot.end_time
+#     end_time.short_description = 'End Time'
     
-    def is_active(self, obj):
-        return obj.availability_slot.is_active
-    is_active.short_description = 'Active'
-    is_active.boolean = True
+#     def is_active(self, obj):
+#         return obj.availability_slot.is_active
+#     is_active.short_description = 'Active'
+#     is_active.boolean = True
     
-    def get_queryset(self, request):
-        return super().get_queryset(request).select_related('doctor__user', 'availability_slot')
+#     def get_queryset(self, request):
+#         return super().get_queryset(request).select_related('doctor__user', 'availability_slot')
 
 
 @admin.register(Prescription)

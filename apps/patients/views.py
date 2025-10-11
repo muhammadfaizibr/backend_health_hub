@@ -32,11 +32,14 @@ class ProfileViewSet(viewsets.ModelViewSet):
         return Profile.objects.none()
 
     def perform_create(self, serializer):
-        if self.request.user.role == 'Patient':
-            serializer.save(user=self.request.user)
-        else:
-            return Response({'error': 'Only patients can create profiles.'}, status=status.HTTP_403_FORBIDDEN)
-
+        if self.request.user.role != 'Patient':
+            raise ValidationError({'error': 'Only patients can create profiles.'})
+        
+        # Check if profile already exists
+        if Profile.objects.filter(user=self.request.user).exists():
+            raise ValidationError({'error': 'Profile already exists for this user.'})
+        
+        serializer.save(user=self.request.user)
 
 class MedicalHistoryViewSet(viewsets.ModelViewSet):
     queryset = MedicalHistory.objects.select_related('patient', 'created_by', 'updated_by')
@@ -92,32 +95,46 @@ class CaseViewSet(viewsets.ModelViewSet):
         else:
             serializer.save()
 
-
 class AppointmentTimeSlotViewSet(viewsets.ModelViewSet):
-    queryset = AppointmentTimeSlot.objects.select_related('doctor').filter(is_booked=False)
+    queryset = AppointmentTimeSlot.objects.select_related(
+        'case', 
+        'case__patient', 
+        'case__doctor', 
+        'created_by'
+    ).filter(is_booked=False)
     serializer_class = AppointmentTimeSlotSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ['doctor', 'date', 'timezone']
+    filterset_fields = ['case', 'date', 'timezone', 'is_booked']
 
     def get_queryset(self):
         qs = super().get_queryset()
-        if self.request.user.role == 'Doctor':
-            doctor = DoctorProfile.objects.filter(user=self.request.user).first()
+        user = self.request.user
+        
+        if user.role == 'Doctor':
+            # Show time slots for cases assigned to this doctor
+            doctor = DoctorProfile.objects.filter(user=user).first()
             if doctor:
-                return qs.filter(doctor=doctor)
-        return qs if self.request.user.is_staff else qs.none()
+                return qs.filter(case__doctor=doctor)
+        elif user.role == 'Patient':
+            # Show time slots for patient's own cases
+            patient = Profile.objects.filter(user=user).first()
+            if patient:
+                return qs.filter(case__patient=patient)
+        elif user.is_staff:
+            # Staff can see all time slots
+            return qs
+            
+        return qs.none()
 
     def perform_create(self, serializer):
-        doctor_email = self.request.data.get('doctor')
-        doctor = DoctorProfile.objects.get(user__email=doctor_email)
-        serializer.save(doctor=doctor)
-
+        """Set the created_by field to the current user."""
+        serializer.save(created_by=self.request.user)
 
 class AppointmentViewSet(viewsets.ModelViewSet):
     queryset = Appointment.objects.select_related(
-        'case', 'time_slot', 'time_slot__doctor', 'translator', 'cancelled_by', 'created_by'
-    ).prefetch_related('case__patient')
+        'case', 'time_slot', 'translator', 'cancelled_by', 'created_by'
+    ).prefetch_related('case__patient', 'case__doctor')
     serializer_class = AppointmentSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend]
@@ -128,10 +145,14 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             return self.queryset.filter(case__patient__user=self.request.user)
         elif self.request.user.role == 'Doctor':
             doctor = DoctorProfile.objects.filter(user=self.request.user).first()
-            return self.queryset.filter(time_slot__doctor=doctor)
+            if doctor:
+                return self.queryset.filter(case__doctor=doctor)
+            return self.queryset.none()
         elif self.request.user.role == 'Translator':
             trans = TranslatorProfile.objects.filter(user=self.request.user).first()
-            return self.queryset.filter(translator=trans)
+            if trans:
+                return self.queryset.filter(translator=trans)
+            return self.queryset.none()
         return self.queryset.all() if self.request.user.is_staff else self.queryset.none()
 
     @action(detail=True, methods=['post'])
@@ -139,16 +160,19 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         appointment = self.get_object()
         if appointment.status != 'Pending Confirmation' or request.user != appointment.created_by:
             return Response({'error': 'Cannot confirm this appointment.'}, status=status.HTTP_400_BAD_REQUEST)
+        
         appointment.status = 'Confirmed'
         appointment.save()
         from apps.base.utils.email import send_appointment_confirmation
-        send_appointment_confirmation(appointment, appointment.case.patient, appointment.time_slot.doctor.user)
+        # Get doctor from the case
+        doctor_user = appointment.case.doctor.user
+        send_appointment_confirmation(appointment, appointment.case.patient, doctor_user)
         return Response(AppointmentSerializer(appointment).data)
 
     @action(detail=True, methods=['post'])
     def cancel(self, request, pk=None):
         appointment = self.get_object()
-        reason = request.data.get('reason', '')
+        reason = request.data.get('cancellation_reason', request.data.get('reason', ''))
         appointment.status = 'Cancelled'
         appointment.cancellation_reason = reason
         appointment.cancelled_by = request.user
@@ -159,12 +183,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         return Response(AppointmentSerializer(appointment).data)
 
     def perform_create(self, serializer):
-        # Check if slot is available
-        slot = serializer.validated_data['time_slot']
-        if slot.is_booked:
-            raise ValidationError("Slot already booked.")
         serializer.save(created_by=self.request.user)
-
 
 class ReportViewSet(viewsets.ModelViewSet):
     queryset = Report.objects.select_related('case', 'appointment', 'file', 'uploaded_by')

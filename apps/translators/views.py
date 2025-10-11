@@ -2,22 +2,20 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.exceptions import ValidationError
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 
 from .models import (
-    Profile, TranslatorExperience, TranslatorEducation, TranslatorCertification,
-    TranslationLanguage, TranslationFee, TranslatorAvailability, TranslatorReview
+    Profile, 
+    TranslationLanguage, TranslatorReview
 )
 from .serializers import (
-    ProfileSerializer, TranslatorExperienceSerializer, TranslatorEducationSerializer,
-    TranslatorCertificationSerializer, TranslationLanguageSerializer, TranslationFeeSerializer,
-    TranslatorAvailabilitySerializer, TranslatorReviewSerializer
+    ProfileSerializer, TranslationLanguageSerializer, TranslatorReviewSerializer
 )
 from .permissions import IsTranslatorOrReadOnly, IsPatientOrStaff
-from rest_framework.serializers import ValidationError
 
 
 class ProfileViewSet(viewsets.ModelViewSet):
@@ -28,12 +26,7 @@ class ProfileViewSet(viewsets.ModelViewSet):
     """
     
     queryset = Profile.objects.select_related('user').prefetch_related(
-        'experiences__experience',
-        'educations__education',
-        'certifications__certification',
-        'languages',
-        'fees__service_fee',
-        'availabilities__availability_slot'
+        'languages'  # Only prefetch what exists and is used in the serializer
     )
     serializer_class = ProfileSerializer
     permission_classes = [IsAuthenticated]
@@ -42,7 +35,6 @@ class ProfileViewSet(viewsets.ModelViewSet):
     search_fields = ['user__first_name', 'user__last_name', 'user__email', 'area_of_focus']
     ordering_fields = ['created_at', 'is_verified']
     ordering = ['-created_at']
-
     def get_queryset(self):
         user = self.request.user
         
@@ -59,10 +51,10 @@ class ProfileViewSet(viewsets.ModelViewSet):
         if self.request.user.role == 'Translator':
             # Check if profile already exists
             if Profile.objects.filter(user=self.request.user).exists():
-                raise ValidationError("Translator profile already exists for this user.")
+                raise ValidationError({'error': 'Profile already exists for this user.'})
             serializer.save(user=self.request.user)
         else:
-            raise ValidationError("Only translators can create a translator profile.")
+            raise ValidationError({'error': 'Only translators can create a translator profile.'})
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def verify(self, request, pk=None):
@@ -78,127 +70,6 @@ class ProfileViewSet(viewsets.ModelViewSet):
         profile.save()
         
         return Response({'message': 'Profile verified successfully.'})
-
-
-class TranslatorExperienceViewSet(viewsets.ModelViewSet):
-    """ViewSet for managing translator experiences."""
-    
-    queryset = TranslatorExperience.objects.select_related('translator__user', 'experience')
-    serializer_class = TranslatorExperienceSerializer
-    permission_classes = [IsAuthenticated]
-    filter_backends = [DjangoFilterBackend, OrderingFilter]
-    ordering = ['-created_at']
-
-    def get_queryset(self):
-        user = self.request.user
-        
-        if user.is_staff:
-            return self.queryset.all()
-        elif hasattr(user, 'translator_profile'):
-            return self.queryset.filter(translator=user.translator_profile)
-        return self.queryset.none()
-
-    @transaction.atomic
-    def perform_create(self, serializer):
-        translator = get_object_or_404(Profile, user=self.request.user)
-        serializer.save(translator=translator)
-
-
-class TranslatorEducationViewSet(viewsets.ModelViewSet):
-    """ViewSet for managing translator education."""
-    
-    queryset = TranslatorEducation.objects.select_related('translator__user', 'education')
-    serializer_class = TranslatorEducationSerializer
-    permission_classes = [IsAuthenticated]
-    filter_backends = [DjangoFilterBackend, OrderingFilter]
-    ordering = ['-created_at']
-
-    def get_queryset(self):
-        user = self.request.user
-        
-        if user.is_staff:
-            return self.queryset.all()
-        elif hasattr(user, 'translator_profile'):
-            return self.queryset.filter(translator=user.translator_profile)
-        return self.queryset.none()
-
-    @transaction.atomic
-    def perform_create(self, serializer):
-        translator = get_object_or_404(Profile, user=self.request.user)
-        serializer.save(translator=translator)
-
-
-class TranslatorCertificationViewSet(viewsets.ModelViewSet):
-    """ViewSet for managing translator certifications."""
-    
-    queryset = TranslatorCertification.objects.select_related('translator__user', 'certification')
-    serializer_class = TranslatorCertificationSerializer
-    permission_classes = [IsAuthenticated]
-    filter_backends = [DjangoFilterBackend, OrderingFilter]
-    ordering = ['-created_at']
-
-    def get_queryset(self):
-        user = self.request.user
-        
-        if user.is_staff:
-            return self.queryset.all()
-        elif hasattr(user, 'translator_profile'):
-            return self.queryset.filter(translator=user.translator_profile)
-        return self.queryset.none()
-
-    @transaction.atomic
-    def perform_create(self, serializer):
-        translator = get_object_or_404(Profile, user=self.request.user)
-        serializer.save(translator=translator)
-
-
-class TranslationFeeViewSet(viewsets.ModelViewSet):
-    """ViewSet for managing translation fees."""
-    
-    queryset = TranslationFee.objects.select_related('translator__user', 'service_fee')
-    serializer_class = TranslationFeeSerializer
-    permission_classes = [IsAuthenticated]
-    filter_backends = [DjangoFilterBackend, OrderingFilter]
-    ordering = ['-created_at']
-
-    def get_queryset(self):
-        user = self.request.user
-        
-        if user.is_staff:
-            return self.queryset.all()
-        elif hasattr(user, 'translator_profile'):
-            return self.queryset.filter(translator=user.translator_profile)
-        return self.queryset.none()
-
-    @transaction.atomic
-    def perform_create(self, serializer):
-        translator = get_object_or_404(Profile, user=self.request.user)
-        serializer.save(translator=translator)
-
-
-class TranslatorAvailabilityViewSet(viewsets.ModelViewSet):
-    """ViewSet for managing translator availability."""
-    
-    queryset = TranslatorAvailability.objects.select_related('translator__user', 'availability_slot')
-    serializer_class = TranslatorAvailabilitySerializer
-    permission_classes = [IsAuthenticated]
-    filter_backends = [DjangoFilterBackend, OrderingFilter]
-    ordering = ['-created_at']
-
-    def get_queryset(self):
-        user = self.request.user
-        
-        if user.is_staff:
-            return self.queryset.all()
-        elif hasattr(user, 'translator_profile'):
-            return self.queryset.filter(translator=user.translator_profile)
-        return self.queryset.none()
-
-    @transaction.atomic
-    def perform_create(self, serializer):
-        translator = get_object_or_404(Profile, user=self.request.user)
-        serializer.save(translator=translator)
-
 
 class TranslationLanguageViewSet(viewsets.ModelViewSet):
     """ViewSet for managing translation languages."""
@@ -224,7 +95,6 @@ class TranslationLanguageViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         translator = get_object_or_404(Profile, user=self.request.user)
         serializer.save(translator=translator)
-
 
 class TranslatorReviewViewSet(viewsets.ModelViewSet):
     """ViewSet for managing translator reviews."""

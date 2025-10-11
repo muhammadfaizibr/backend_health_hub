@@ -8,13 +8,36 @@ def custom_exception_handler(exc, context):
     response = exception_handler(exc, context)
 
     if response is not None:
-        custom_response_data = {
-            'error': response.data.get('detail', str(exc)),
-            'code': getattr(exc, 'code', 'error'),
-        }
-        if 'non_field_errors' in response.data:
-            custom_response_data['error'] = response.data['non_field_errors'][0]
+        # Handle validation errors (field-specific errors)
+        if isinstance(response.data, dict) and any(
+            key not in ['detail', 'code'] for key in response.data.keys()
+        ):
+            # This is a validation error with field-specific errors
+            custom_response_data = {
+                'errors': response.data,
+                'code': 'validation_error',
+            }
+        # Handle non-field errors
+        elif 'non_field_errors' in response.data:
+            custom_response_data = {
+                'error': response.data['non_field_errors'][0] if isinstance(
+                    response.data['non_field_errors'], list
+                ) else response.data['non_field_errors'],
+                'code': getattr(exc, 'code', 'error'),
+            }
+        # Handle detail errors (like authentication errors)
+        elif 'detail' in response.data:
+            custom_response_data = {
+                'error': response.data['detail'],
+                'code': getattr(exc, 'code', 'error'),
+            }
+        # Fallback for other error types
+        else:
+            custom_response_data = {
+                'error': str(exc),
+                'code': getattr(exc, 'code', 'error'),
+            }
+        
         response.data = custom_response_data
-        response.status_code = status.HTTP_400_BAD_REQUEST if 'ValidationError' in str(type(exc)) else response.status_code
 
-    return response
+    return response 

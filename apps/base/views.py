@@ -15,6 +15,7 @@ from django.conf import settings
 from rest_framework.exceptions import ValidationError, PermissionDenied
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
+from django.db import IntegrityError
 
 from .models import (
     User, UserLanguage, Education, Experience,
@@ -49,7 +50,6 @@ class UserRegistrationView(generics.CreateAPIView):
             status=status.HTTP_201_CREATED
         )
 
-
 class UserLoginView(generics.GenericAPIView):
     """
     API endpoint for user login.
@@ -63,8 +63,11 @@ class UserLoginView(generics.GenericAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
+        # Serialize the user object using UserSerializer
+        user_data = UserSerializer(serializer.validated_data['user']).data
+        
         return Response({
-            'user': serializer.validated_data['user'],
+            'user': user_data,
             'access_token': serializer.validated_data['access_token'],
             'refresh_token': serializer.validated_data['refresh_token'],
         }, status=status.HTTP_200_OK)
@@ -432,6 +435,36 @@ class AvailabilitySlotViewSet(viewsets.ModelViewSet):
         """Assign current user."""
         serializer.save(user=self.request.user)
 
+    def create(self, request, *args, **kwargs):
+        """Handle creation with duplicate detection."""
+        try:
+            return super().create(request, *args, **kwargs)
+        except IntegrityError as e:
+            if 'unique constraint' in str(e).lower() or 'duplicate key' in str(e).lower():
+                return Response(
+                    {
+                        "error": "Duplicate availability slot",
+                        "detail": "An availability slot with this day, start time, and end time already exists."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            raise
+
+    def update(self, request, *args, **kwargs):
+        """Handle update with duplicate detection."""
+        try:
+            return super().update(request, *args, **kwargs)
+        except IntegrityError as e:
+            if 'unique constraint' in str(e).lower() or 'duplicate key' in str(e).lower():
+                return Response(
+                    {
+                        "error": "Duplicate availability slot",
+                        "detail": "An availability slot with this day, start time, and end time already exists."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            raise
+
     def perform_update(self, serializer):
         """Ensure users can only update their own records."""
         instance = self.get_object()
@@ -451,7 +484,6 @@ class AvailabilitySlotViewSet(viewsets.ModelViewSet):
         slots = self.queryset.filter(user=request.user).order_by('day_of_week', 'start_time')
         serializer = self.get_serializer(slots, many=True)
         return Response(serializer.data)
-
 
 class ServiceFeeViewSet(viewsets.ModelViewSet):
     """ViewSet for managing service fees."""

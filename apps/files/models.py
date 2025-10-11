@@ -1,14 +1,17 @@
 from django.db import models
 from django.core.exceptions import ValidationError
+from django.utils.translation import gettext_lazy as _
 import uuid
+from apps.patients.models import Case
+
 from apps.base.models import User
 
 
 def validate_file_size(value):
-    """Validate file size doesn't exceed 50MB"""
-    limit = 50 * 1024 * 1024  # 50MB
-    if value > limit:
-        raise ValidationError(f'File size cannot exceed {limit / (1024 * 1024)}MB')
+    """Validate file size (max 50MB)"""
+    max_size = 50 * 1024 * 1024  # 50MB
+    if value > max_size:
+        raise ValidationError(_('File size cannot exceed 50MB.'))
 
 
 class File(models.Model):
@@ -49,6 +52,14 @@ class File(models.Model):
         blank=True, 
         related_name='related_files'
     )
+    case = models.ForeignKey(
+        Case,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='files',
+        help_text='Optional: Associate file with a specific case'
+    )
     file_type = models.CharField(max_length=30, choices=FILE_TYPE_CHOICES)
     original_filename = models.CharField(max_length=255)
     file_path = models.CharField(max_length=500)
@@ -76,6 +87,7 @@ class File(models.Model):
             models.Index(fields=['related_to_user', 'file_type', 'is_public']),
             models.Index(fields=['uploaded_by', 'deleted_at']),
             models.Index(fields=['file_type', 'deleted_at']),
+            models.Index(fields=['case', 'deleted_at']),
         ]
 
     def __str__(self):
@@ -93,4 +105,21 @@ class File(models.Model):
             return True
         if self.uploaded_by == user or self.related_to_user == user:
             return True
+        
+        # Check case-based access
+        if self.case:
+            # Patient of the case can access
+            if self.case.patient and self.case.patient.user == user:
+                return True
+            # Doctor of the case can access
+            if self.case.doctor and self.case.doctor.user == user:
+                return True
+        
         return False
+
+    def can_update(self, user):
+        """Check if user can update this file"""
+        if user.is_staff:
+            return True
+        # Only the uploader can update the file
+        return self.uploaded_by == user

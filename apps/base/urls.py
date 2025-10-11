@@ -25,7 +25,7 @@ router.register(r'wallets', WalletViewSet, basename='wallet')
 urlpatterns = [
     # Authentication endpoints
     path('auth/register/', UserRegistrationView.as_view(), name='register'),
-    path('auth/login/', UserLoginView.as_view(), name='login'),
+    path('auth/login/', UserLoginView.as_view(), name='login'), 
     path('auth/logout/', UserLogoutView.as_view(), name='logout'),
     path('auth/change-password/', ChangePasswordView.as_view(), name='change-password'),
     path('auth/forgot-password/', ForgotPasswordView.as_view(), name='forgot-password'),

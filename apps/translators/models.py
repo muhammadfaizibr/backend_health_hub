@@ -5,7 +5,7 @@ from django.utils.translation import gettext_lazy as _
 from django.db.models import Avg
 import uuid
 
-from apps.base.models import User, Education, Experience, Certification, AvailabilitySlot, ServiceFee
+from apps.base.models import User#, Education, Experience, Certification, AvailabilitySlot, ServiceFee
 
 
 class Profile(models.Model):
@@ -57,94 +57,94 @@ class Profile(models.Model):
         return self.reviews.filter(status='Published').count()
 
 
-class TranslatorExperience(models.Model):
-    """Links translators to their professional experiences."""
+# class TranslatorExperience(models.Model):
+#     """Links translators to their professional experiences."""
     
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    translator = models.ForeignKey(
-        Profile, 
-        on_delete=models.CASCADE, 
-        related_name='experiences'
-    )
-    experience = models.ForeignKey(
-        Experience, 
-        on_delete=models.CASCADE,
-        related_name='translator_experiences'
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
+#     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+#     translator = models.ForeignKey(
+#         Profile, 
+#         on_delete=models.CASCADE, 
+#         related_name='experiences'
+#     )
+#     experience = models.ForeignKey(
+#         Experience, 
+#         on_delete=models.CASCADE,
+#         related_name='translator_experiences'
+#     )
+#     created_at = models.DateTimeField(auto_now_add=True)
 
-    class Meta:
-        db_table = 'translator_experience'
-        verbose_name = _('Translator Experience')
-        verbose_name_plural = _('Translator Experiences')
-        unique_together = ['translator', 'experience']
-        ordering = ['-created_at']
-        indexes = [
-            models.Index(fields=['translator', '-created_at']),
-        ]
+#     class Meta:
+#         db_table = 'translator_experience'
+#         verbose_name = _('Translator Experience')
+#         verbose_name_plural = _('Translator Experiences')
+#         unique_together = ['translator', 'experience']
+#         ordering = ['-created_at']
+#         indexes = [
+#             models.Index(fields=['translator', '-created_at']),
+#         ]
 
-    def __str__(self):
-        return f"{self.translator.user.get_full_name()} - {self.experience.title}"
+#     def __str__(self):
+#         return f"{self.translator.user.get_full_name()} - {self.experience.title}"
 
 
-class TranslatorEducation(models.Model):
-    """Links translators to their educational background."""
+# class TranslatorEducation(models.Model):
+#     """Links translators to their educational background."""
     
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    translator = models.ForeignKey(
-        Profile, 
-        on_delete=models.CASCADE, 
-        related_name='educations'
-    )
-    education = models.ForeignKey(
-        Education, 
-        on_delete=models.CASCADE,
-        related_name='translator_educations'
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
+#     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+#     translator = models.ForeignKey(
+#         Profile, 
+#         on_delete=models.CASCADE, 
+#         related_name='educations'
+#     )
+#     education = models.ForeignKey(
+#         Education, 
+#         on_delete=models.CASCADE,
+#         related_name='translator_educations'
+#     )
+#     created_at = models.DateTimeField(auto_now_add=True)
 
-    class Meta:
-        db_table = 'translator_education'
-        verbose_name = _('Translator Education')
-        verbose_name_plural = _('Translator Education')
-        unique_together = ['translator', 'education']
-        ordering = ['-created_at']
-        indexes = [
-            models.Index(fields=['translator', '-created_at']),
-        ]
+#     class Meta:
+#         db_table = 'translator_education'
+#         verbose_name = _('Translator Education')
+#         verbose_name_plural = _('Translator Education')
+#         unique_together = ['translator', 'education']
+#         ordering = ['-created_at']
+#         indexes = [
+#             models.Index(fields=['translator', '-created_at']),
+#         ]
 
-    def __str__(self):
-        return f"{self.translator.user.get_full_name()} - {self.education.degree}"
+#     def __str__(self):
+#         return f"{self.translator.user.get_full_name()} - {self.education.degree}"
 
 
-class TranslatorCertification(models.Model):
-    """Links translators to their certifications."""
+# class TranslatorCertification(models.Model):
+#     """Links translators to their certifications."""
     
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    translator = models.ForeignKey(
-        Profile, 
-        on_delete=models.CASCADE, 
-        related_name='certifications'
-    )
-    certification = models.ForeignKey(
-        Certification, 
-        on_delete=models.CASCADE,
-        related_name='translator_certifications'
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
+#     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+#     translator = models.ForeignKey(
+#         Profile, 
+#         on_delete=models.CASCADE, 
+#         related_name='certifications'
+#     )
+#     certification = models.ForeignKey(
+#         Certification, 
+#         on_delete=models.CASCADE,
+#         related_name='translator_certifications'
+#     )
+#     created_at = models.DateTimeField(auto_now_add=True)
 
-    class Meta:
-        db_table = 'translator_certification'
-        verbose_name = _('Translator Certification')
-        verbose_name_plural = _('Translator Certifications')
-        unique_together = ['translator', 'certification']
-        ordering = ['-created_at']
-        indexes = [
-            models.Index(fields=['translator', '-created_at']),
-        ]
+#     class Meta:
+#         db_table = 'translator_certification'
+#         verbose_name = _('Translator Certification')
+#         verbose_name_plural = _('Translator Certifications')
+#         unique_together = ['translator', 'certification']
+#         ordering = ['-created_at']
+#         indexes = [
+#             models.Index(fields=['translator', '-created_at']),
+#         ]
 
-    def __str__(self):
-        return f"{self.translator.user.get_full_name()} - {self.certification.name}"
+#     def __str__(self):
+#         return f"{self.translator.user.get_full_name()} - {self.certification.name}"
 
 
 class TranslationLanguage(models.Model):
@@ -192,66 +192,66 @@ class TranslationLanguage(models.Model):
             })
 
 
-class TranslationFee(models.Model):
-    """Service fees configured by translator."""
+# class TranslationFee(models.Model):
+#     """Service fees configured by translator."""
     
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    translator = models.ForeignKey(
-        Profile, 
-        on_delete=models.CASCADE, 
-        related_name='fees'
-    )
-    service_fee = models.ForeignKey(
-        ServiceFee, 
-        on_delete=models.CASCADE,
-        related_name='translator_fees'
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+#     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+#     translator = models.ForeignKey(
+#         Profile, 
+#         on_delete=models.CASCADE, 
+#         related_name='fees'
+#     )
+#     service_fee = models.ForeignKey(
+#         ServiceFee, 
+#         on_delete=models.CASCADE,
+#         related_name='translator_fees'
+#     )
+#     created_at = models.DateTimeField(auto_now_add=True)
+#     updated_at = models.DateTimeField(auto_now=True)
 
-    class Meta:
-        db_table = 'translator_fee'
-        verbose_name = _('Translation Fee')
-        verbose_name_plural = _('Translation Fees')
-        unique_together = ['translator', 'service_fee']
-        ordering = ['-created_at']
-        indexes = [
-            models.Index(fields=['translator', '-created_at']),
-        ]
+#     class Meta:
+#         db_table = 'translator_fee'
+#         verbose_name = _('Translation Fee')
+#         verbose_name_plural = _('Translation Fees')
+#         unique_together = ['translator', 'service_fee']
+#         ordering = ['-created_at']
+#         indexes = [
+#             models.Index(fields=['translator', '-created_at']),
+#         ]
 
-    def __str__(self):
-        return f"{self.translator.user.get_full_name()} - Fee"
+#     def __str__(self):
+#         return f"{self.translator.user.get_full_name()} - Fee"
 
 
-class TranslatorAvailability(models.Model):
-    """Availability slots for translator scheduling."""
+# class TranslatorAvailability(models.Model):
+#     """Availability slots for translator scheduling."""
     
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    translator = models.ForeignKey(
-        Profile, 
-        on_delete=models.CASCADE, 
-        related_name='availabilities'
-    )
-    availability_slot = models.ForeignKey(
-        AvailabilitySlot, 
-        on_delete=models.CASCADE,
-        related_name='translator_availabilities'
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+#     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+#     translator = models.ForeignKey(
+#         Profile, 
+#         on_delete=models.CASCADE, 
+#         related_name='availabilities'
+#     )
+#     availability_slot = models.ForeignKey(
+#         AvailabilitySlot, 
+#         on_delete=models.CASCADE,
+#         related_name='translator_availabilities'
+#     )
+#     created_at = models.DateTimeField(auto_now_add=True)
+#     updated_at = models.DateTimeField(auto_now=True)
 
-    class Meta:
-        db_table = 'translator_availability'
-        verbose_name = _('Translator Availability')
-        verbose_name_plural = _('Translator Availabilities')
-        unique_together = ['translator', 'availability_slot']
-        ordering = ['-created_at']
-        indexes = [
-            models.Index(fields=['translator', '-created_at']),
-        ]
+#     class Meta:
+#         db_table = 'translator_availability'
+#         verbose_name = _('Translator Availability')
+#         verbose_name_plural = _('Translator Availabilities')
+#         unique_together = ['translator', 'availability_slot']
+#         ordering = ['-created_at']
+#         indexes = [
+#             models.Index(fields=['translator', '-created_at']),
+#         ]
 
-    def __str__(self):
-        return f"{self.translator.user.get_full_name()} - Availability"
+#     def __str__(self):
+#         return f"{self.translator.user.get_full_name()} - Availability"
 
 
 class TranslatorReview(models.Model):

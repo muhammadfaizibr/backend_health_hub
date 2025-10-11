@@ -1,14 +1,14 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import FileViewSet
+from .views import FileViewSet, admin_download_file
 
 router = DefaultRouter()
 router.register(r'files', FileViewSet, basename='file')
 
 urlpatterns = [
     path('', include(router.urls)),
+    path('admin-download/<uuid:file_id>/', admin_download_file, name='admin-download-file'),
 ]
-
 # Router automatically generates these URLs:
 # GET    /api/files/                  - List files
 # POST   /api/files/                  - Upload file

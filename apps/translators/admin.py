@@ -4,8 +4,8 @@ from django.db.models import Avg, Count
 from django.utils.translation import gettext_lazy as _
 
 from .models import (
-    Profile, TranslatorExperience, TranslatorEducation, TranslatorCertification,
-    TranslationLanguage, TranslationFee, TranslatorAvailability, TranslatorReview
+    Profile, TranslationLanguage, TranslatorReview
+    # TranslatorExperience, TranslatorEducation, TranslatorCertification, TranslationFee, TranslatorAvailability, 
 )
 from django.db import models  # Import models for annotation
 
@@ -16,25 +16,25 @@ class TranslationLanguageInline(admin.TabularInline):
     fields = ['language_code', 'proficiency_level']
 
 
-class TranslatorExperienceInline(admin.TabularInline):
-    model = TranslatorExperience
-    extra = 0
-    autocomplete_fields = ['experience']
-    readonly_fields = ['created_at']
+# class TranslatorExperienceInline(admin.TabularInline):
+#     model = TranslatorExperience
+#     extra = 0
+#     autocomplete_fields = ['experience']
+#     readonly_fields = ['created_at']
 
 
-class TranslatorEducationInline(admin.TabularInline):
-    model = TranslatorEducation
-    extra = 0
-    autocomplete_fields = ['education']
-    readonly_fields = ['created_at']
+# class TranslatorEducationInline(admin.TabularInline):
+#     model = TranslatorEducation
+#     extra = 0
+#     autocomplete_fields = ['education']
+#     readonly_fields = ['created_at']
 
 
-class TranslatorCertificationInline(admin.TabularInline):
-    model = TranslatorCertification
-    extra = 0
-    autocomplete_fields = ['certification']
-    readonly_fields = ['created_at']
+# class TranslatorCertificationInline(admin.TabularInline):
+#     model = TranslatorCertification
+#     extra = 0
+#     autocomplete_fields = ['certification']
+#     readonly_fields = ['created_at']
 
 
 @admin.register(Profile)
@@ -50,9 +50,9 @@ class ProfileAdmin(admin.ModelAdmin):
     date_hierarchy = 'created_at'
     inlines = [
         TranslationLanguageInline, 
-        TranslatorExperienceInline, 
-        TranslatorEducationInline, 
-        TranslatorCertificationInline
+        # TranslatorExperienceInline, 
+        # TranslatorEducationInline, 
+        # TranslatorCertificationInline
     ]
     
     fieldsets = (
@@ -128,88 +128,88 @@ class ProfileAdmin(admin.ModelAdmin):
         )
 
 
-@admin.register(TranslatorExperience)
-class TranslatorExperienceAdmin(admin.ModelAdmin):
-    list_display = ['id', 'translator_name', 'experience_title', 'experience_company', 'created_at']
-    list_filter = ['created_at']
-    search_fields = ['translator__user__email', 'translator__user__first_name', 'experience__title', 'experience__company']
-    readonly_fields = ['id', 'created_at']
-    autocomplete_fields = ['translator', 'experience']
-    date_hierarchy = 'created_at'
+# @admin.register(TranslatorExperience)
+# class TranslatorExperienceAdmin(admin.ModelAdmin):
+#     list_display = ['id', 'translator_name', 'experience_title', 'experience_company', 'created_at']
+#     list_filter = ['created_at']
+#     search_fields = ['translator__user__email', 'translator__user__first_name', 'experience__title', 'experience__company']
+#     readonly_fields = ['id', 'created_at']
+#     autocomplete_fields = ['translator', 'experience']
+#     date_hierarchy = 'created_at'
     
-    def translator_name(self, obj):
-        return obj.translator.user.get_full_name()
-    translator_name.short_description = 'Translator'
-    translator_name.admin_order_field = 'translator__user__first_name'
+#     def translator_name(self, obj):
+#         return obj.translator.user.get_full_name()
+#     translator_name.short_description = 'Translator'
+#     translator_name.admin_order_field = 'translator__user__first_name'
     
-    def experience_title(self, obj):
-        return obj.experience.title
-    experience_title.short_description = 'Position'
-    experience_title.admin_order_field = 'experience__title'
+#     def experience_title(self, obj):
+#         return obj.experience.title
+#     experience_title.short_description = 'Position'
+#     experience_title.admin_order_field = 'experience__title'
     
-    def experience_company(self, obj):
-        return obj.experience.company
-    experience_company.short_description = 'Company'
-    experience_company.admin_order_field = 'experience__company'
+#     def experience_company(self, obj):
+#         return obj.experience.company
+#     experience_company.short_description = 'Company'
+#     experience_company.admin_order_field = 'experience__company'
     
-    def get_queryset(self, request):
-        return super().get_queryset(request).select_related('translator__user', 'experience')
+#     def get_queryset(self, request):
+#         return super().get_queryset(request).select_related('translator__user', 'experience')
 
 
-@admin.register(TranslatorEducation)
-class TranslatorEducationAdmin(admin.ModelAdmin):
-    list_display = ['id', 'translator_name', 'education_degree', 'education_institution', 'created_at']
-    list_filter = ['created_at']
-    search_fields = ['translator__user__email', 'translator__user__first_name', 'education__degree', 'education__institution']
-    readonly_fields = ['id', 'created_at']
-    autocomplete_fields = ['translator', 'education']
-    date_hierarchy = 'created_at'
+# @admin.register(TranslatorEducation)
+# class TranslatorEducationAdmin(admin.ModelAdmin):
+#     list_display = ['id', 'translator_name', 'education_degree', 'education_institution', 'created_at']
+#     list_filter = ['created_at']
+#     search_fields = ['translator__user__email', 'translator__user__first_name', 'education__degree', 'education__institution']
+#     readonly_fields = ['id', 'created_at']
+#     autocomplete_fields = ['translator', 'education']
+#     date_hierarchy = 'created_at'
     
-    def translator_name(self, obj):
-        return obj.translator.user.get_full_name()
-    translator_name.short_description = 'Translator'
-    translator_name.admin_order_field = 'translator__user__first_name'
+#     def translator_name(self, obj):
+#         return obj.translator.user.get_full_name()
+#     translator_name.short_description = 'Translator'
+#     translator_name.admin_order_field = 'translator__user__first_name'
     
-    def education_degree(self, obj):
-        return obj.education.degree
-    education_degree.short_description = 'Degree'
-    education_degree.admin_order_field = 'education__degree'
+#     def education_degree(self, obj):
+#         return obj.education.degree
+#     education_degree.short_description = 'Degree'
+#     education_degree.admin_order_field = 'education__degree'
     
-    def education_institution(self, obj):
-        return obj.education.institution
-    education_institution.short_description = 'Institution'
-    education_institution.admin_order_field = 'education__institution'
+#     def education_institution(self, obj):
+#         return obj.education.institution
+#     education_institution.short_description = 'Institution'
+#     education_institution.admin_order_field = 'education__institution'
     
-    def get_queryset(self, request):
-        return super().get_queryset(request).select_related('translator__user', 'education')
+#     def get_queryset(self, request):
+#         return super().get_queryset(request).select_related('translator__user', 'education')
 
 
-@admin.register(TranslatorCertification)
-class TranslatorCertificationAdmin(admin.ModelAdmin):
-    list_display = ['id', 'translator_name', 'certification_name', 'certification_organization', 'created_at']
-    list_filter = ['created_at']
-    search_fields = ['translator__user__email', 'translator__user__first_name', 'certification__name', 'certification__issuing_organization']
-    readonly_fields = ['id', 'created_at']
-    autocomplete_fields = ['translator', 'certification']
-    date_hierarchy = 'created_at'
+# @admin.register(TranslatorCertification)
+# class TranslatorCertificationAdmin(admin.ModelAdmin):
+#     list_display = ['id', 'translator_name', 'certification_name', 'certification_organization', 'created_at']
+#     list_filter = ['created_at']
+#     search_fields = ['translator__user__email', 'translator__user__first_name', 'certification__name', 'certification__issuing_organization']
+#     readonly_fields = ['id', 'created_at']
+#     autocomplete_fields = ['translator', 'certification']
+#     date_hierarchy = 'created_at'
     
-    def translator_name(self, obj):
-        return obj.translator.user.get_full_name()
-    translator_name.short_description = 'Translator'
-    translator_name.admin_order_field = 'translator__user__first_name'
+#     def translator_name(self, obj):
+#         return obj.translator.user.get_full_name()
+#     translator_name.short_description = 'Translator'
+#     translator_name.admin_order_field = 'translator__user__first_name'
     
-    def certification_name(self, obj):
-        return obj.certification.name
-    certification_name.short_description = 'Certification'
-    certification_name.admin_order_field = 'certification__name'
+#     def certification_name(self, obj):
+#         return obj.certification.name
+#     certification_name.short_description = 'Certification'
+#     certification_name.admin_order_field = 'certification__name'
     
-    def certification_organization(self, obj):
-        return obj.certification.issuing_organization
-    certification_organization.short_description = 'Organization'
-    certification_organization.admin_order_field = 'certification__issuing_organization'
+#     def certification_organization(self, obj):
+#         return obj.certification.issuing_organization
+#     certification_organization.short_description = 'Organization'
+#     certification_organization.admin_order_field = 'certification__issuing_organization'
     
-    def get_queryset(self, request):
-        return super().get_queryset(request).select_related('translator__user', 'certification')
+#     def get_queryset(self, request):
+#         return super().get_queryset(request).select_related('translator__user', 'certification')
 
 
 @admin.register(TranslationLanguage)
@@ -244,48 +244,48 @@ class TranslationLanguageAdmin(admin.ModelAdmin):
         return super().get_queryset(request).select_related('translator__user')
 
 
-@admin.register(TranslationFee)
-class TranslationFeeAdmin(admin.ModelAdmin):
-    list_display = ['id', 'translator_name', 'service_fee_info', 'created_at', 'updated_at']
-    list_filter = ['created_at', 'updated_at']
-    search_fields = ['translator__user__email', 'translator__user__first_name']
-    readonly_fields = ['id', 'created_at', 'updated_at']
-    autocomplete_fields = ['translator', 'service_fee']
-    date_hierarchy = 'created_at'
+# @admin.register(TranslationFee)
+# class TranslationFeeAdmin(admin.ModelAdmin):
+#     list_display = ['id', 'translator_name', 'service_fee_info', 'created_at', 'updated_at']
+#     list_filter = ['created_at', 'updated_at']
+#     search_fields = ['translator__user__email', 'translator__user__first_name']
+#     readonly_fields = ['id', 'created_at', 'updated_at']
+#     autocomplete_fields = ['translator', 'service_fee']
+#     date_hierarchy = 'created_at'
     
-    def translator_name(self, obj):
-        return obj.translator.user.get_full_name()
-    translator_name.short_description = 'Translator'
-    translator_name.admin_order_field = 'translator__user__first_name'
+#     def translator_name(self, obj):
+#         return obj.translator.user.get_full_name()
+#     translator_name.short_description = 'Translator'
+#     translator_name.admin_order_field = 'translator__user__first_name'
     
-    def service_fee_info(self, obj):
-        return str(obj.service_fee)
-    service_fee_info.short_description = 'Service Fee'
+#     def service_fee_info(self, obj):
+#         return str(obj.service_fee)
+#     service_fee_info.short_description = 'Service Fee'
     
-    def get_queryset(self, request):
-        return super().get_queryset(request).select_related('translator__user', 'service_fee')
+#     def get_queryset(self, request):
+#         return super().get_queryset(request).select_related('translator__user', 'service_fee')
 
 
-@admin.register(TranslatorAvailability)
-class TranslatorAvailabilityAdmin(admin.ModelAdmin):
-    list_display = ['id', 'translator_name', 'availability_info', 'created_at', 'updated_at']
-    list_filter = ['created_at', 'updated_at']
-    search_fields = ['translator__user__email', 'translator__user__first_name']
-    readonly_fields = ['id', 'created_at', 'updated_at']
-    autocomplete_fields = ['translator', 'availability_slot']
-    date_hierarchy = 'created_at'
+# @admin.register(TranslatorAvailability)
+# class TranslatorAvailabilityAdmin(admin.ModelAdmin):
+#     list_display = ['id', 'translator_name', 'availability_info', 'created_at', 'updated_at']
+#     list_filter = ['created_at', 'updated_at']
+#     search_fields = ['translator__user__email', 'translator__user__first_name']
+#     readonly_fields = ['id', 'created_at', 'updated_at']
+#     autocomplete_fields = ['translator', 'availability_slot']
+#     date_hierarchy = 'created_at'
     
-    def translator_name(self, obj):
-        return obj.translator.user.get_full_name()
-    translator_name.short_description = 'Translator'
-    translator_name.admin_order_field = 'translator__user__first_name'
+#     def translator_name(self, obj):
+#         return obj.translator.user.get_full_name()
+#     translator_name.short_description = 'Translator'
+#     translator_name.admin_order_field = 'translator__user__first_name'
     
-    def availability_info(self, obj):
-        return str(obj.availability_slot)
-    availability_info.short_description = 'Availability'
+#     def availability_info(self, obj):
+#         return str(obj.availability_slot)
+#     availability_info.short_description = 'Availability'
     
-    def get_queryset(self, request):
-        return super().get_queryset(request).select_related('translator__user', 'availability_slot')
+#     def get_queryset(self, request):
+#         return super().get_queryset(request).select_related('translator__user', 'availability_slot')
 
 @admin.register(TranslatorReview)
 class TranslatorReviewAdmin(admin.ModelAdmin):

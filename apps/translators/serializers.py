@@ -1,14 +1,10 @@
 from rest_framework import serializers
-from django.db import transaction
 from .models import (
-    Profile, TranslatorExperience, TranslatorEducation, TranslatorCertification,
-    TranslationLanguage, TranslationFee, TranslatorAvailability, TranslatorReview
+    Profile, TranslationLanguage, TranslatorReview
 )
 from apps.base.serializers import (
-    UserSerializer, EducationSerializer, ExperienceSerializer, 
-    CertificationSerializer, ServiceFeeSerializer, AvailabilitySlotSerializer
+    UserSerializer, 
 )
-from apps.base.models import Experience, Education, Certification
 
 
 class TranslationLanguageSerializer(serializers.ModelSerializer):
@@ -55,142 +51,6 @@ class ProfileSerializer(serializers.ModelSerializer):
         if value and len(value) != 3:
             raise serializers.ValidationError("Currency code must be exactly 3 characters.")
         return value.upper() if value else 'USD'
-
-
-class TranslatorExperienceSerializer(serializers.ModelSerializer):
-    """Serializer for translator experience with nested creation."""
-    
-    experience = ExperienceSerializer()
-    translator_name = serializers.CharField(source='translator.user.get_full_name', read_only=True)
-
-    class Meta:
-        model = TranslatorExperience
-        fields = ['id', 'translator', 'translator_name', 'experience', 'created_at']
-        read_only_fields = ['id', 'translator', 'translator_name', 'created_at']
-
-    @transaction.atomic
-    def create(self, validated_data):
-        experience_data = validated_data.pop('experience')
-        
-        # Use get_or_create to avoid duplicates
-        experience, created = Experience.objects.get_or_create(
-            title=experience_data.get('title'),
-            company=experience_data.get('company'),
-            defaults=experience_data
-        )
-        
-        validated_data['experience'] = experience
-        return super().create(validated_data)
-
-    @transaction.atomic
-    def update(self, instance, validated_data):
-        if 'experience' in validated_data:
-            experience_data = validated_data.pop('experience')
-            
-            # Update existing experience or create new one
-            for attr, value in experience_data.items():
-                setattr(instance.experience, attr, value)
-            instance.experience.save()
-        
-        return super().update(instance, validated_data)
-
-
-class TranslatorEducationSerializer(serializers.ModelSerializer):
-    """Serializer for translator education with nested creation."""
-    
-    education = EducationSerializer()
-    translator_name = serializers.CharField(source='translator.user.get_full_name', read_only=True)
-
-    class Meta:
-        model = TranslatorEducation
-        fields = ['id', 'translator', 'translator_name', 'education', 'created_at']
-        read_only_fields = ['id', 'translator', 'translator_name', 'created_at']
-
-    @transaction.atomic
-    def create(self, validated_data):
-        education_data = validated_data.pop('education')
-        
-        education, created = Education.objects.get_or_create(
-            institution=education_data.get('institution'),
-            degree=education_data.get('degree'),
-            defaults=education_data
-        )
-        
-        validated_data['education'] = education
-        return super().create(validated_data)
-
-    @transaction.atomic
-    def update(self, instance, validated_data):
-        if 'education' in validated_data:
-            education_data = validated_data.pop('education')
-            
-            for attr, value in education_data.items():
-                setattr(instance.education, attr, value)
-            instance.education.save()
-        
-        return super().update(instance, validated_data)
-
-
-class TranslatorCertificationSerializer(serializers.ModelSerializer):
-    """Serializer for translator certifications with nested creation."""
-    
-    certification = CertificationSerializer()
-    translator_name = serializers.CharField(source='translator.user.get_full_name', read_only=True)
-
-    class Meta:
-        model = TranslatorCertification
-        fields = ['id', 'translator', 'translator_name', 'certification', 'created_at']
-        read_only_fields = ['id', 'translator', 'translator_name', 'created_at']
-
-    @transaction.atomic
-    def create(self, validated_data):
-        certification_data = validated_data.pop('certification')
-        
-        certification, created = Certification.objects.get_or_create(
-            name=certification_data.get('name'),
-            issuing_organization=certification_data.get('issuing_organization'),
-            defaults=certification_data
-        )
-        
-        validated_data['certification'] = certification
-        return super().create(validated_data)
-
-    @transaction.atomic
-    def update(self, instance, validated_data):
-        if 'certification' in validated_data:
-            certification_data = validated_data.pop('certification')
-            
-            for attr, value in certification_data.items():
-                setattr(instance.certification, attr, value)
-            instance.certification.save()
-        
-        return super().update(instance, validated_data)
-
-
-class TranslationFeeSerializer(serializers.ModelSerializer):
-    """Serializer for translation fees."""
-    
-    service_fee = ServiceFeeSerializer(read_only=True)
-    service_fee_id = serializers.UUIDField(write_only=True)
-    translator_name = serializers.CharField(source='translator.user.get_full_name', read_only=True)
-
-    class Meta:
-        model = TranslationFee
-        fields = ['id', 'translator', 'translator_name', 'service_fee', 'service_fee_id', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'translator', 'translator_name', 'created_at', 'updated_at']
-
-
-class TranslatorAvailabilitySerializer(serializers.ModelSerializer):
-    """Serializer for translator availability."""
-    
-    availability_slot = AvailabilitySlotSerializer(read_only=True)
-    availability_slot_id = serializers.UUIDField(write_only=True)
-    translator_name = serializers.CharField(source='translator.user.get_full_name', read_only=True)
-
-    class Meta:
-        model = TranslatorAvailability
-        fields = ['id', 'translator', 'translator_name', 'availability_slot', 'availability_slot_id', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'translator', 'translator_name', 'created_at', 'updated_at']
 
 
 class TranslatorReviewSerializer(serializers.ModelSerializer):

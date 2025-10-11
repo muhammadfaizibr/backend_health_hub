@@ -93,19 +93,27 @@ class CaseAdmin(admin.ModelAdmin):
     doctor_email.short_description = 'Doctor'
     doctor_email.admin_order_field = 'doctor__user__email'
 
-
 @admin.register(AppointmentTimeSlot)
 class AppointmentTimeSlotAdmin(admin.ModelAdmin):
-    list_display = ['id', 'doctor_email', 'date', 'start_time', 'duration', 'is_booked_badge']
+    list_display = ['id', 'case_title', 'patient_name', 'doctor_name', 'date', 'start_time', 'duration', 'is_booked_badge', 'created_by_email']
     list_filter = ['date', 'is_booked', 'timezone', 'created_at']
-    search_fields = ['doctor__user__email', 'doctor__user__first_name', 'doctor__user__last_name']
-    autocomplete_fields = ['doctor']
+    search_fields = [
+        'case__title',
+        'case__patient__user__email',
+        'case__patient__user__first_name',
+        'case__patient__user__last_name',
+        'case__doctor__user__email',
+        'case__doctor__user__first_name',
+        'case__doctor__user__last_name',
+        'created_by__email'
+    ]
+    autocomplete_fields = ['case', 'created_by']
     readonly_fields = ['id', 'created_at', 'updated_at']
     date_hierarchy = 'date'
     
     fieldsets = (
         (_('Time Slot Information'), {
-            'fields': ('id', 'doctor', 'date', 'start_time', 'duration', 'timezone')
+            'fields': ('id', 'case', 'created_by', 'date', 'start_time', 'duration', 'timezone')
         }),
         (_('Status'), {
             'fields': ('is_booked',)
@@ -116,10 +124,27 @@ class AppointmentTimeSlotAdmin(admin.ModelAdmin):
         }),
     )
     
-    def doctor_email(self, obj):
-        return obj.doctor.user.email
-    doctor_email.short_description = 'Doctor'
-    doctor_email.admin_order_field = 'doctor__user__email'
+    def case_title(self, obj):
+        return obj.case.title
+    case_title.short_description = 'Case'
+    case_title.admin_order_field = 'case__title'
+    
+    def patient_name(self, obj):
+        return obj.case.patient.user.get_full_name()
+    patient_name.short_description = 'Patient'
+    patient_name.admin_order_field = 'case__patient__user__first_name'
+    
+    def doctor_name(self, obj):
+        if obj.case.doctor:
+            return obj.case.doctor.user.get_full_name()
+        return '-'
+    doctor_name.short_description = 'Doctor'
+    doctor_name.admin_order_field = 'case__doctor__user__first_name'
+    
+    def created_by_email(self, obj):
+        return obj.created_by.email if obj.created_by else '-'
+    created_by_email.short_description = 'Created By'
+    created_by_email.admin_order_field = 'created_by__email'
     
     def is_booked_badge(self, obj):
         if obj.is_booked:
@@ -131,14 +156,10 @@ class AppointmentTimeSlotAdmin(admin.ModelAdmin):
         )
     is_booked_badge.short_description = 'Status'
 
-
 @admin.register(Appointment)
 class AppointmentAdmin(admin.ModelAdmin):
-    # Fixed: removed 'scheduled_at' which doesn't exist, using 'time_slot_info' instead
     list_display = ['id', 'case_title', 'patient_email', 'doctor_email', 'time_slot_info', 'status_badge', 'is_follow_up']
-    # Fixed: removed 'scheduled_at' from list_filter
     list_filter = ['status', 'translator_status', 'is_follow_up', 'created_at']
-    # CRITICAL: search_fields required for autocomplete in TranslatorReviewAdmin
     search_fields = [
         'case__title',
         'case__patient__user__email', 
@@ -149,9 +170,7 @@ class AppointmentAdmin(admin.ModelAdmin):
         'case__doctor__user__last_name'
     ]
     autocomplete_fields = ['case', 'time_slot', 'translator']
-    # Fixed: removed 'scheduled_at' from readonly_fields
     readonly_fields = ['id', 'created_at', 'updated_at']
-    # Fixed: use 'created_at' instead of 'scheduled_at'
     date_hierarchy = 'created_at'
     
     fieldsets = (
@@ -217,10 +236,15 @@ class AppointmentAdmin(admin.ModelAdmin):
     status_badge.short_description = 'Status'
     
     def get_queryset(self, request):
+        # FIXED: Removed 'time_slot__doctor__user' since time_slot no longer has doctor field
+        # Doctor info comes from case now
         return super().get_queryset(request).select_related(
-            'case__patient__user', 'case__doctor__user', 'time_slot__doctor__user', 'translator__user'
+            'case__patient__user',
+            'case__doctor__user',
+            'time_slot__case',  # Added to optimize time_slot access
+            'time_slot__created_by',  # Added to optimize created_by access
+            'translator__user'
         )
-
 
 @admin.register(Report)
 class ReportAdmin(admin.ModelAdmin):

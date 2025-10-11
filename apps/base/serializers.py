@@ -420,16 +420,43 @@ class AvailabilitySlotSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'user', 'created_at', 'updated_at']
 
     def validate(self, attrs):
-        """Validate time ranges."""
+        """Validate time ranges and check for overlaps."""
         start_time = attrs.get('start_time')
         end_time = attrs.get('end_time')
+        day_of_week = attrs.get('day_of_week')
         
+        # Validate start time is before end time
         if start_time and end_time and start_time >= end_time:
             raise serializers.ValidationError("Start time must be before end time.")
         
+        # Get user from context (set during creation) or from instance (during update)
+        user = self.context['request'].user
+        
+        # Check for overlapping slots
+        if start_time and end_time and day_of_week is not None:
+            overlapping_slots = AvailabilitySlot.objects.filter(
+                user=user,
+                day_of_week=day_of_week,
+                is_active=True
+            ).filter(
+                # Check if the new slot overlaps with existing slots
+                # Overlap occurs when: new_start < existing_end AND new_end > existing_start
+                start_time__lt=end_time,
+                end_time__gt=start_time
+            )
+            
+            # Exclude current instance if updating
+            if self.instance:
+                overlapping_slots = overlapping_slots.exclude(id=self.instance.id)
+            
+            if overlapping_slots.exists():
+                overlapping = overlapping_slots.first()
+                raise serializers.ValidationError(
+                    f"This time slot overlaps with an existing availability slot: "
+                    f"{overlapping.get_day_of_week_display()} {overlapping.start_time} - {overlapping.end_time}"
+                )
+        
         return attrs
-
-
 class ServiceFeeSerializer(serializers.ModelSerializer):
     """Serializer for service fees."""
     
@@ -449,6 +476,29 @@ class ServiceFeeSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Fee must be greater than zero.")
         return value
 
+    def validate(self, attrs):
+        """Check for duplicate duration for the same user."""
+        duration = attrs.get('duration')
+        user = self.context['request'].user
+        
+        if duration:
+            # Check if a fee with this duration already exists for this user
+            existing_fees = ServiceFee.objects.filter(
+                user=user,
+                duration=duration
+            )
+            
+            # Exclude current instance if updating
+            if self.instance:
+                existing_fees = existing_fees.exclude(id=self.instance.id)
+            
+            if existing_fees.exists():
+                duration_display = dict(ServiceFee.DURATION_CHOICES).get(duration, f"{duration} min")
+                raise serializers.ValidationError(
+                    f"A service fee for {duration_display} already exists. Please update the existing fee instead."
+                )
+        
+        return attrs
 
 class WalletSerializer(serializers.ModelSerializer):
     """Serializer for wallet management."""

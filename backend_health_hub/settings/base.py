@@ -284,3 +284,6 @@ SWAGGER_SETTINGS = {
         }
     },
 }
+
+# Frontend URL (for email links, etc.)
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:3000')
