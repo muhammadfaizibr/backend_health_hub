@@ -15,7 +15,7 @@ load_dotenv()
 
 DEBUG = os.getenv('DEBUG', default=True)
 
-ALLOWED_HOSTS = ['127.0.0.1']
+ALLOWED_HOSTS = ['127.0.0.1', 'localhost']
 
 # Corsheaders (all origins) for development
 CORS_ALLOW_ALL_ORIGINS = True

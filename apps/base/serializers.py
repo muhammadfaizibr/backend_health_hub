@@ -145,19 +145,25 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         # Create wallet for the user
         Wallet.objects.create(user=user)
         
-        # Generate JWT tokens
-        refresh = RefreshToken.for_user(user)
-        user.access_token = str(refresh.access_token)
-        user.refresh_token = str(refresh)
+        # ✅ Generate JWT tokens WITH ROLE using custom function
+        tokens = get_tokens_for_user(user)
+        user.access_token = tokens['access']
+        user.refresh_token = tokens['refresh']
         
         return user
 
     def to_representation(self, instance):
-        """Custom representation with tokens."""
+        """Return user data nested under 'user' with tokens at root."""
         data = super().to_representation(instance)
-        data['access_token'] = getattr(instance, 'access_token', None)
-        data['refresh_token'] = getattr(instance, 'refresh_token', None)
-        return data
+
+        access = data.pop("access_token", None)
+        refresh = data.pop("refresh_token", None)
+
+        return {
+            "user": data,
+            "access_token": access,
+            "refresh_token": refresh,
+        }
 
 
 class UserLoginSerializer(serializers.Serializer):
@@ -210,11 +216,12 @@ class UserLoginSerializer(serializers.Serializer):
                 )
 
             # Generate tokens
-            refresh = RefreshToken.for_user(user)
-            
+            # ✅ Generate tokens WITH ROLE using custom function
+            tokens = get_tokens_for_user(user)
+
             attrs['user'] = user
-            attrs['access_token'] = str(refresh.access_token)
-            attrs['refresh_token'] = str(refresh)
+            attrs['access_token'] = tokens['access']
+            attrs['refresh_token'] = tokens['refresh']
             
         else:
             raise serializers.ValidationError(
@@ -228,7 +235,7 @@ class UserLoginSerializer(serializers.Serializer):
 class ChangePasswordSerializer(serializers.Serializer):
     """Serializer for changing password for authenticated users."""
     
-    old_password = serializers.CharField(
+    current_password = serializers.CharField(
         required=True,
         write_only=True,
         style={'input_type': 'password'}
@@ -245,11 +252,11 @@ class ChangePasswordSerializer(serializers.Serializer):
         style={'input_type': 'password'}
     )
 
-    def validate_old_password(self, value):
+    def validate_current_password(self, value):
         """Validate that old password is correct."""
         user = self.context['request'].user
         if not user.check_password(value):
-            raise serializers.ValidationError("Old password is incorrect.")
+            raise serializers.ValidationError("Current password is incorrect.")
         return value
 
     def validate(self, attrs):
@@ -260,7 +267,7 @@ class ChangePasswordSerializer(serializers.Serializer):
             })
         
         # Ensure new password is different from old password
-        if attrs['old_password'] == attrs['new_password']:
+        if attrs['current_password'] == attrs['new_password']:
             raise serializers.ValidationError({
                 "new_password": "New password must be different from old password."
             })
@@ -529,3 +536,25 @@ class WalletSerializer(serializers.ModelSerializer):
         if value < 0:
             raise serializers.ValidationError("Total lifetime earnings cannot be negative.")
         return value
+
+
+
+def get_tokens_for_user(user):
+    """
+    Generate JWT tokens with custom claims (role, email, full_name)
+    """
+    refresh = RefreshToken.for_user(user)
+    
+    # ✅ Custom claims add karo
+    refresh['role'] = user.role
+    refresh['user_id'] = str(user.id)
+    refresh['email'] = user.email
+    refresh['full_name'] = user.get_full_name()
+    
+    # Access token mein bhi same claims automatically copy ho jayenge
+    access_token = refresh.access_token
+    
+    return {
+        'refresh': str(refresh),
+        'access': str(access_token),
+    }

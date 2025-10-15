@@ -68,6 +68,10 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+
+    'apps.base.middleware.JWTAuthFromCookieMiddleware',  
+    'apps.base.middleware.JWTCookieResponseMiddleware',
+
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -287,3 +291,16 @@ SWAGGER_SETTINGS = {
 
 # Frontend URL (for email links, etc.)
 FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:3000')
+
+# JWT Cookie Settings
+JWT_AUTH_COOKIE = 'access_token'
+JWT_AUTH_COOKIE_MAX_AGE = 60 * 15  # 15 minutes
+JWT_REFRESH_COOKIE = 'refresh_token'
+JWT_REFRESH_COOKIE_MAX_AGE = 60 * 60 * 24 * 7  # 7 days
+
+# Cookie Security Settings
+COOKIE_HTTPONLY = True
+COOKIE_SECURE = False  # Production mein True
+COOKIE_SAMESITE = 'Lax'
+COOKIE_PATH = '/'
+COOKIE_DOMAIN = None  # Production: '.yourdomain.com'
