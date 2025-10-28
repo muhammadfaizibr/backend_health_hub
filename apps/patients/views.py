@@ -9,7 +9,7 @@ from .models import (
 )
 from .serializers import (
     ProfileSerializer, MedicalHistorySerializer, CaseSerializer,
-    AppointmentTimeSlotSerializer, AppointmentSerializer, ReportSerializer 
+    AppointmentTimeSlotSerializer, AppointmentSerializer, CreateAppointmentSerializer, ReportSerializer 
 )
 from apps.base.models import User
 from apps.doctors.models import Profile as DoctorProfile
@@ -155,13 +155,34 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             return self.queryset.none()
         return self.queryset.all() if self.request.user.is_staff else self.queryset.none()
 
+    @action(detail=False, methods=['post'], url_path='book')
+    def book_appointment(self, request):
+        """
+        Book an appointment with automatic case and time slot creation.
+        This endpoint handles the entire booking process in a single transaction.
+        """
+        serializer = CreateAppointmentSerializer(
+            data=request.data,
+            context={'request': request}
+        )
+        serializer.is_valid(raise_exception=True)
+        appointment = serializer.save()
+        
+        # Return the created appointment with full details
+        response_serializer = AppointmentSerializer(appointment)
+        return Response(
+            response_serializer.data,
+            status=status.HTTP_201_CREATED
+        )
+    
+
     @action(detail=True, methods=['post'])
     def confirm(self, request, pk=None):
         appointment = self.get_object()
-        if appointment.status != 'Pending Confirmation' or request.user != appointment.created_by:
+        if appointment.status != 'pending_confirmation' or request.user != appointment.created_by:
             return Response({'error': 'Cannot confirm this appointment.'}, status=status.HTTP_400_BAD_REQUEST)
         
-        appointment.status = 'Confirmed'
+        appointment.status = 'confirmed'
         appointment.save()
         from apps.base.utils.email import send_appointment_confirmation
         # Get doctor from the case
@@ -173,7 +194,7 @@ class AppointmentViewSet(viewsets.ModelViewSet):
     def cancel(self, request, pk=None):
         appointment = self.get_object()
         reason = request.data.get('cancellation_reason', request.data.get('reason', ''))
-        appointment.status = 'Cancelled'
+        appointment.status = 'cancelled'
         appointment.cancellation_reason = reason
         appointment.cancelled_by = request.user
         appointment.cancelled_at = timezone.now()

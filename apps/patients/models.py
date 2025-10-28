@@ -34,11 +34,11 @@ class MedicalHistory(models.Model):
     """Medical history records for patients."""
     
     TYPE_CHOICES = [
-        ('Chronic Condition', 'Chronic Condition'),
-        ('Allergy', 'Allergy'),
-        ('Surgery', 'Surgery'),
-        ('Hospitalization', 'Hospitalization'),
-        ('Medication', 'Medication'),
+        ('chronic_condition', 'Chronic Condition'),
+        ('allergy', 'Allergy'),
+        ('surgery', 'Surgery'),
+        ('hospitalization', 'Hospitalization'),
+        ('medication', 'Medication'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -70,9 +70,9 @@ class Case(models.Model):
     """Medical case for tracking patient treatment."""
     
     STATUS_CHOICES = [
-        ('Open', 'Open'),
-        ('In Progress', 'In Progress'),
-        ('Closed', 'Closed'),
+        ('open', 'Open'),
+        ('in_progress', 'In Progress'),
+        ('closed', 'Closed'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -158,17 +158,17 @@ class Appointment(models.Model):
     """Patient appointment with doctor."""
     
     STATUS_CHOICES = [
-        ('Pending Confirmation', 'Pending Confirmation'),
-        ('Confirmed', 'Confirmed'),
-        ('Rescheduling Requested', 'Rescheduling Requested'),
-        ('Conducted', 'Conducted'),
-        ('Cancelled', 'Cancelled'),
+        ('pending_confirmation', 'Pending Confirmation'),
+        ('confirmed', 'Confirmed'),
+        ('rescheduling Requested', 'Rescheduling Requested'),
+        ('conducted', 'Conducted'),
+        ('cancelled', 'Cancelled'),
     ]
 
     TRANSLATOR_STATUS_CHOICES = [
-        ('Not Needed', 'Not Needed'),
-        ('Pending', 'Pending'),
-        ('Assigned', 'Assigned'),
+        ('not_needed', 'Not Needed'),
+        ('pending', 'Pending'),
+        ('assigned', 'Assigned'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -221,11 +221,11 @@ class Report(models.Model):
     """Medical reports and documents for cases."""
     
     REPORT_TYPE_CHOICES = [
-        ('Lab Result', 'Lab Result'),
-        ('Imaging', 'Imaging'),
-        ('Consultation Note', 'Consultation Note'),
-        ('Discharge Summary', 'Discharge Summary'),
-        ('Other', 'Other'),
+        ('lab_result', 'lab_result'),
+        ('imaging', 'Imaging'),
+        ('consultation_note', 'Consultation Note'),
+        ('discharge_summary', 'Discharge Summary'),
+        ('other', 'Other'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

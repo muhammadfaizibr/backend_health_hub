@@ -36,3 +36,23 @@ class IsOwnerOrReadOnly(permissions.BasePermission):
             return obj.user == request.user
         
         return obj == request.user
+    
+class BaseReadOnlyPermission:
+    """
+    Custom permission class:
+    - Read access for authenticated users (to view doctor profiles)
+    - Write access only for owner or staff
+    """
+    def has_permission(self, request, view):
+        # Allow authenticated users to read
+        if request.method in ['GET', 'HEAD', 'OPTIONS']:
+            return request.user and request.user.is_authenticated
+        # Only authenticated users can write
+        return request.user and request.user.is_authenticated
+
+    def has_object_permission(self, request, view, obj):
+        # Allow read access for all authenticated users
+        if request.method in ['GET', 'HEAD', 'OPTIONS']:
+            return True
+        # Allow write access only for owner or staff
+        return obj.user == request.user or request.user.is_staff

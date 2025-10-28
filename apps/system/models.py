@@ -5,16 +5,16 @@ from apps.base.models import User
 
 class Settings(models.Model):
     VALUE_TYPE_CHOICES = [
-        ('String', 'String'),
-        ('Integer', 'Integer'),
-        ('Boolean', 'Boolean'),
-        ('JSON', 'JSON'),
+        ('string', 'String'),
+        ('integer', 'Integer'),
+        ('boolean', 'Boolean'),
+        ('json', 'JSON'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     key = models.CharField(max_length=255, unique=True)
     value = models.JSONField()  # Flexible
-    value_type = models.CharField(max_length=20, choices=VALUE_TYPE_CHOICES, default='String')
+    value_type = models.CharField(max_length=20, choices=VALUE_TYPE_CHOICES, default='string')
     description = models.TextField(blank=True)
     is_public = models.BooleanField(default=False)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='+')
@@ -28,10 +28,10 @@ class Settings(models.Model):
 
 class RateLimit(models.Model):
     ACTION_TYPE_CHOICES = [
-        ('Login', 'Login'),
-        ('Password Reset', 'Password Reset'),
-        ('API Call', 'API Call'),
-        ('Message Send', 'Message Send'),
+        ('login', 'Login'),
+        ('password_reset', 'Password Reset'),
+        ('api_call', 'API Call'),
+        ('message_send', 'Message Send'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

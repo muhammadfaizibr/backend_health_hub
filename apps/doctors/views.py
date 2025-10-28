@@ -6,7 +6,8 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from django.db import transaction
-from django.db.models import Q, Avg, Count, Prefetch
+from django.db.models import Q, Avg, Count, Value, CharField
+from django.db.models.functions import Concat
 
 from .models import (
     Profile, 
@@ -21,7 +22,7 @@ from .serializers import (
 
 
 class ProfileViewSet(viewsets.ModelViewSet):
-    """ViewSet for doctor profiles."""
+    """ViewSet for doctor profiles with enhanced search and filter."""
     
     queryset = Profile.objects.all()
     serializer_class = ProfileSerializer
@@ -29,7 +30,7 @@ class ProfileViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['specialization', 'is_verified', 'years_of_experience']
     search_fields = ['user__first_name', 'user__last_name', 'user__email', 'specialization', 'about']
-    ordering_fields = ['created_at', 'years_of_experience']
+    ordering_fields = ['created_at', 'years_of_experience', 'avg_rating']
     ordering = ['-created_at']
 
     def get_queryset(self):
@@ -52,11 +53,144 @@ class ProfileViewSet(viewsets.ModelViewSet):
         if self.request.user.role != 'Doctor':
             raise PermissionDenied("Only doctors can create doctor profiles.")
         
-        # Check if profile already exists
         if Profile.objects.filter(user=self.request.user).exists():
             raise ValidationError("Doctor profile already exists for this user.")
         
         serializer.save(user=self.request.user)
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def search_doctors(self, request):
+        """
+        Enhanced search endpoint with category-first approach.
+        
+        Query parameters:
+        - search: Search term (searches in category first, then name/other fields)
+        - category: Filter by exact category
+        - location: Filter by location
+        - min_experience: Minimum years of experience
+        - max_experience: Maximum years of experience
+        - ordering: Sort by 'years_of_experience', '-years_of_experience', 'created_at', '-created_at'
+        """
+        
+        # Start with optimized query
+        queryset = Profile.objects.select_related('user').annotate(
+            full_name_computed=Concat(
+                'user__first_name', 
+                Value(' '), 
+                'user__last_name',
+                output_field=CharField()
+            ),
+            avg_rating=Avg('reviews__rating', filter=Q(reviews__status='Published')),
+            review_count=Count('reviews', filter=Q(reviews__status='Published'))
+        )
+        
+        # Only show verified doctors for patients
+        if not request.user.is_staff:
+            queryset = queryset.filter(is_verified=True)
+        
+        # CATEGORY-BASED SEARCH
+        search_query = request.query_params.get('search', '').strip()
+        search_type = request.query_params.get('search_type', 'category')  # 'category' or 'general'
+        
+        if search_query:
+            if search_type == 'general':
+                # General search across all fields (when user clicks "Search for...")
+                q_objects = Q()
+                search_terms = search_query.split()
+                
+                for term in search_terms:
+                    q_objects |= Q(user__first_name__icontains=term)
+                    q_objects |= Q(user__last_name__icontains=term)
+                    q_objects |= Q(full_name_computed__icontains=term)
+                    q_objects |= Q(user__email__icontains=term)
+                    q_objects |= Q(about__icontains=term)
+                    q_objects |= Q(specialization__icontains=term)
+                
+                queryset = queryset.filter(q_objects).distinct()
+            else:
+                # Category search (default - filters by category display name)
+                # Get matching categories
+                from .models import DOCTOR_CATEGORIES
+                matching_categories = [
+                    code for code, label in DOCTOR_CATEGORIES 
+                    if search_query.lower() in label.lower()
+                ]
+                
+                if matching_categories:
+                    queryset = queryset.filter(category__in=matching_categories)
+                else:
+                    # No matching categories found
+                    queryset = queryset.none()
+        
+        # Filter by exact category (if provided separately)
+        category = request.query_params.get('category', '').strip()
+        if category:
+            queryset = queryset.filter(category=category)
+        
+        # Filter by experience range
+        min_experience = request.query_params.get('min_experience')
+        if min_experience:
+            try:
+                queryset = queryset.filter(years_of_experience__gte=int(min_experience))
+            except (ValueError, TypeError):
+                pass
+        
+        max_experience = request.query_params.get('max_experience')
+        if max_experience:
+            try:
+                queryset = queryset.filter(years_of_experience__lte=int(max_experience))
+            except (ValueError, TypeError):
+                pass
+        
+        # Filter by location
+        location = request.query_params.get('location', '').strip()
+        if location:
+            queryset = queryset.filter(
+                Q(location__icontains=location) | Q(user__location__icontains=location)
+            )
+        
+        # Ordering
+        ordering = request.query_params.get('ordering', '-created_at')
+        valid_orderings = {
+            'years_of_experience': 'years_of_experience',
+            '-years_of_experience': '-years_of_experience',
+            'created_at': 'created_at',
+            '-created_at': '-created_at',
+        }
+        
+        if ordering in valid_orderings:
+            queryset = queryset.order_by(ordering)
+        else:
+            queryset = queryset.order_by('-created_at')
+        
+        # Pagination
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = ProfileSerializer(page, many=True, context={'request': request})
+            return self.get_paginated_response(serializer.data)
+        
+        serializer = ProfileSerializer(queryset, many=True, context={'request': request})
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def categories(self, request):
+        """Get list of all doctor categories with their display names."""
+        from .models import DOCTOR_CATEGORIES
+        
+        search = request.query_params.get('search', '').strip().lower()
+        
+        categories = [
+            {
+                'value': code,
+                'label': label
+            }
+            for code, label in DOCTOR_CATEGORIES
+            if not search or search in label.lower()
+        ]
+        
+        return Response({
+            'categories': categories
+        })
 
     @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
     def my_profile(self, request):
@@ -66,7 +200,7 @@ class ProfileViewSet(viewsets.ModelViewSet):
                 avg_rating=Avg('reviews__rating', filter=Q(reviews__status='Published')),
                 review_count=Count('reviews', filter=Q(reviews__status='Published'))
             ).get(user=request.user)
-            serializer = self.get_serializer(profile)
+            serializer = self.get_serializer(profile, context={'request': request})
             return Response(serializer.data)
         except Profile.DoesNotExist:
             return Response(
@@ -82,194 +216,21 @@ class ProfileViewSet(viewsets.ModelViewSet):
             'patient__user'
         ).order_by('-created_at')
         
+        # Assuming you have DoctorReviewSerializer
+        from .serializers import DoctorReviewSerializer
         serializer = DoctorReviewSerializer(reviews, many=True)
         return Response(serializer.data)
-
-
-# class DoctorExperienceViewSet(viewsets.ModelViewSet):
-#     """ViewSet for doctor experience records."""
     
-#     queryset = DoctorExperience.objects.all()
-#     serializer_class = DoctorExperienceSerializer
-#     permission_classes = [IsAuthenticated]
-#     filter_backends = [DjangoFilterBackend, OrderingFilter]
-#     filterset_fields = ['doctor']
-#     ordering_fields = ['experience__start_date']
-#     ordering = ['-experience__start_date']
-
-#     def get_queryset(self):
-#         """Filter experience based on user role."""
-#         queryset = self.queryset.select_related('doctor__user', 'experience')
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def specializations(self, request):
+        """Get list of all unique specializations."""
+        specializations = Profile.objects.filter(
+            is_verified=True
+        ).values_list('specialization', flat=True).distinct().order_by('specialization')
         
-#         if self.request.user.role == 'Doctor':
-#             doctor_profile = Profile.objects.filter(user=self.request.user).first()
-#             if doctor_profile:
-#                 return queryset.filter(doctor=doctor_profile)
-#             return DoctorExperience.objects.none()
-#         elif self.request.user.is_staff:
-#             return queryset
-#         else:
-#             # Others can see experiences of verified doctors
-#             return queryset.filter(doctor__is_verified=True)
-
-#     def perform_create(self, serializer):
-#         """Create experience for current doctor."""
-#         if self.request.user.role != 'Doctor' and not self.request.user.is_staff:
-#             raise PermissionDenied("Only doctors can create experience records.")
-        
-#         doctor_profile = Profile.objects.filter(user=self.request.user).first()
-#         if not doctor_profile:
-#             raise ValidationError("Doctor profile not found.")
-        
-#         serializer.save(doctor=doctor_profile)
-
-
-# class DoctorEducationViewSet(viewsets.ModelViewSet):
-#     """ViewSet for doctor education records."""
-    
-#     queryset = DoctorEducation.objects.all()
-#     serializer_class = DoctorEducationSerializer
-#     permission_classes = [IsAuthenticated]
-#     filter_backends = [DjangoFilterBackend, OrderingFilter]
-#     filterset_fields = ['doctor']
-#     ordering_fields = ['education__start_date']
-#     ordering = ['-education__start_date']
-
-#     def get_queryset(self):
-#         """Filter education based on user role."""
-#         queryset = self.queryset.select_related('doctor__user', 'education')
-        
-#         if self.request.user.role == 'Doctor':
-#             doctor_profile = Profile.objects.filter(user=self.request.user).first()
-#             if doctor_profile:
-#                 return queryset.filter(doctor=doctor_profile)
-#             return DoctorEducation.objects.none()
-#         elif self.request.user.is_staff:
-#             return queryset
-#         else:
-#             return queryset.filter(doctor__is_verified=True)
-
-#     def perform_create(self, serializer):
-#         """Create education for current doctor."""
-#         if self.request.user.role != 'Doctor' and not self.request.user.is_staff:
-#             raise PermissionDenied("Only doctors can create education records.")
-        
-#         doctor_profile = Profile.objects.filter(user=self.request.user).first()
-#         if not doctor_profile:
-#             raise ValidationError("Doctor profile not found.")
-        
-#         serializer.save(doctor=doctor_profile)
-
-
-# class DoctorCertificationViewSet(viewsets.ModelViewSet):
-#     """ViewSet for doctor certifications."""
-    
-#     queryset = DoctorCertification.objects.all()
-#     serializer_class = DoctorCertificationSerializer
-#     permission_classes = [IsAuthenticated]
-#     filter_backends = [DjangoFilterBackend, OrderingFilter]
-#     filterset_fields = ['doctor']
-#     ordering_fields = ['certification__issue_date']
-#     ordering = ['-certification__issue_date']
-
-#     def get_queryset(self):
-#         """Filter certifications based on user role."""
-#         queryset = self.queryset.select_related('doctor__user', 'certification')
-        
-#         if self.request.user.role == 'Doctor':
-#             doctor_profile = Profile.objects.filter(user=self.request.user).first()
-#             if doctor_profile:
-#                 return queryset.filter(doctor=doctor_profile)
-#             return DoctorCertification.objects.none()
-#         elif self.request.user.is_staff:
-#             return queryset
-#         else:
-#             return queryset.filter(doctor__is_verified=True)
-
-#     def perform_create(self, serializer):
-#         """Create certification for current doctor."""
-#         if self.request.user.role != 'Doctor' and not self.request.user.is_staff:
-#             raise PermissionDenied("Only doctors can create certification records.")
-        
-#         doctor_profile = Profile.objects.filter(user=self.request.user).first()
-#         if not doctor_profile:
-#             raise ValidationError("Doctor profile not found.")
-        
-#         serializer.save(doctor=doctor_profile)
-
-
-# class ConsultationFeeViewSet(viewsets.ModelViewSet):
-#     """ViewSet for consultation fees."""
-    
-#     queryset = ConsultationFee.objects.all()
-#     serializer_class = ConsultationFeeSerializer
-#     permission_classes = [IsAuthenticated]
-#     filter_backends = [DjangoFilterBackend, OrderingFilter]
-#     filterset_fields = ['doctor']
-#     ordering_fields = ['service_fee__duration']
-#     ordering = ['service_fee__duration']
-
-#     def get_queryset(self):
-#         """Filter consultation fees based on user role."""
-#         queryset = self.queryset.select_related('doctor__user', 'service_fee')
-        
-#         if self.request.user.role == 'Doctor':
-#             doctor_profile = Profile.objects.filter(user=self.request.user).first()
-#             if doctor_profile:
-#                 return queryset.filter(doctor=doctor_profile)
-#             return ConsultationFee.objects.none()
-#         elif self.request.user.is_staff:
-#             return queryset
-#         else:
-#             return queryset.filter(doctor__is_verified=True)
-
-#     def perform_create(self, serializer):
-#         """Create consultation fee for current doctor."""
-#         if self.request.user.role != 'Doctor' and not self.request.user.is_staff:
-#             raise PermissionDenied("Only doctors can create consultation fees.")
-        
-#         doctor_profile = Profile.objects.filter(user=self.request.user).first()
-#         if not doctor_profile:
-#             raise ValidationError("Doctor profile not found.")
-        
-#         serializer.save(doctor=doctor_profile)
-
-
-# class DoctorAvailabilityViewSet(viewsets.ModelViewSet):
-#     """ViewSet for doctor availability."""
-    
-#     queryset = DoctorAvailability.objects.all()
-#     serializer_class = DoctorAvailabilitySerializer
-#     permission_classes = [IsAuthenticated]
-#     filter_backends = [DjangoFilterBackend, OrderingFilter]
-#     filterset_fields = ['doctor', 'availability_slot__day_of_week']
-#     ordering_fields = ['availability_slot__day_of_week', 'availability_slot__start_time']
-#     ordering = ['availability_slot__day_of_week', 'availability_slot__start_time']
-
-#     def get_queryset(self):
-#         """Filter availability based on user role."""
-#         queryset = self.queryset.select_related('doctor__user', 'availability_slot')
-        
-#         if self.request.user.role == 'Doctor':
-#             doctor_profile = Profile.objects.filter(user=self.request.user).first()
-#             if doctor_profile:
-#                 return queryset.filter(doctor=doctor_profile)
-#             return DoctorAvailability.objects.none()
-#         elif self.request.user.is_staff:
-#             return queryset
-#         else:
-#             return queryset.filter(doctor__is_verified=True)
-
-#     def perform_create(self, serializer):
-#         """Create availability for current doctor."""
-#         if self.request.user.role != 'Doctor' and not self.request.user.is_staff:
-#             raise PermissionDenied("Only doctors can create availability.")
-        
-#         doctor_profile = Profile.objects.filter(user=self.request.user).first()
-#         if not doctor_profile:
-#             raise ValidationError("Doctor profile not found.")
-        
-#         serializer.save(doctor=doctor_profile)
+        return Response({
+            'specializations': [s for s in specializations if s]
+        })
 
 
 class PrescriptionViewSet(viewsets.ModelViewSet):

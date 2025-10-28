@@ -3,42 +3,62 @@ from django.db import transaction
 from django.utils import timezone
 
 from .models import (
-    Profile, 
-    # DoctorExperience, DoctorEducation, DoctorCertification, ConsultationFee, DoctorAvailability, 
-    Prescription, PrescriptionItem, DoctorReview
+    Profile, Prescription, PrescriptionItem, DoctorReview
 )
 from apps.base.serializers import (
     UserSerializer, 
-    # EducationSerializer, ExperienceSerializer, CertificationSerializer, ServiceFeeSerializer, AvailabilitySlotSerializer
 )
-# from apps.base.models import Education, Experience, Certification, ServiceFee, AvailabilitySlot
-
 
 class ProfileSerializer(serializers.ModelSerializer):
-    """Serializer for doctor profiles."""
+    """Serializer for doctor profiles with enhanced data."""
     
     user = UserSerializer(read_only=True)
     user_id = serializers.UUIDField(write_only=True, required=False)
     average_rating = serializers.SerializerMethodField()
     total_reviews = serializers.SerializerMethodField()
-
+    full_name = serializers.SerializerMethodField()
+    profile_image = serializers.SerializerMethodField()
+    category_display = serializers.CharField(source='get_category_display', read_only=True)
+    
     class Meta:
         model = Profile
         fields = [
-            'id', 'user', 'user_id', 'about', 'specialization', 'years_of_experience',
-            'license_number', 'is_verified', 'average_rating', 'total_reviews',
+            'id', 'user', 'user_id', 'full_name', 'profile_image',
+            'about', 'category', 'category_display', 'specialization', 
+            'years_of_experience', 'license_number', 'is_verified', 
+            'average_rating', 'total_reviews', 'location',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'user', 'is_verified', 'created_at', 'updated_at']
 
+    def get_full_name(self, obj):
+        """Get doctor's full name."""
+        return obj.user.get_full_name()
+    
+    def get_profile_image(self, obj):
+        """Get doctor's profile image URL."""
+        if hasattr(obj.user, 'profile_image') and obj.user.profile_image:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.user.profile_image.url)
+        return None
+
     def get_average_rating(self, obj):
         """Calculate average rating from published reviews."""
+        # Check if avg_rating is already annotated
+        if hasattr(obj, 'avg_rating') and obj.avg_rating is not None:
+            return round(obj.avg_rating, 2)
+        
         from django.db.models import Avg
         result = obj.reviews.filter(status='Published').aggregate(avg_rating=Avg('rating'))
         return round(result['avg_rating'], 2) if result['avg_rating'] else None
 
     def get_total_reviews(self, obj):
         """Count total published reviews."""
+        # Check if review_count is already annotated
+        if hasattr(obj, 'review_count'):
+            return obj.review_count
+        
         return obj.reviews.filter(status='Published').count()
 
     def validate_license_number(self, value):
@@ -59,245 +79,7 @@ class ProfileSerializer(serializers.ModelSerializer):
         if value < 0 or value > 100:
             raise serializers.ValidationError("Years of experience must be between 0 and 100.")
         return value
-
-# class DoctorExperienceSerializer(serializers.ModelSerializer):
-#     """Serializer for doctor experience records."""
     
-#     experience = ExperienceSerializer(read_only=True)
-#     experience_id = serializers.UUIDField(write_only=True)
-#     doctor_name = serializers.CharField(source='doctor.user.get_full_name', read_only=True)
-
-#     class Meta:
-#         model = DoctorExperience
-#         fields = ['id', 'doctor', 'doctor_name', 'experience', 'experience_id', 'created_at']
-#         read_only_fields = ['id', 'created_at']
-
-#     def validate_experience_id(self, value):
-#         """Ensure experience exists."""
-#         try:
-#             Experience.objects.get(pk=value)
-#             return value
-#         except Experience.DoesNotExist:
-#             raise serializers.ValidationError("Experience not found.")
-
-#     def validate(self, attrs):
-#         """Ensure no duplicate experience for the same doctor."""
-#         doctor = attrs.get('doctor')
-#         experience_id = attrs.get('experience_id')
-        
-#         if doctor and experience_id:
-#             queryset = DoctorExperience.objects.filter(doctor=doctor, experience_id=experience_id)
-#             if self.instance:
-#                 queryset = queryset.exclude(pk=self.instance.pk)
-            
-#             if queryset.exists():
-#                 raise serializers.ValidationError("This experience already exists for the doctor.")
-        
-#         return attrs
-
-#     @transaction.atomic
-#     def create(self, validated_data):
-#         """Create doctor experience."""
-#         experience_id = validated_data.pop('experience_id')
-#         doctor_experience = DoctorExperience.objects.create(
-#             doctor=validated_data['doctor'],
-#             experience_id=experience_id
-#         )
-#         return doctor_experience
-
-#     @transaction.atomic
-#     def update(self, instance, validated_data):
-#         """Update doctor experience."""
-#         if 'experience_id' in validated_data:
-#             instance.experience_id = validated_data.pop('experience_id')
-#         return super().update(instance, validated_data)
-
-
-# class DoctorEducationSerializer(serializers.ModelSerializer):
-#     """Serializer for doctor education records."""
-    
-#     education = EducationSerializer(read_only=True)
-#     education_id = serializers.UUIDField(write_only=True)
-#     doctor_name = serializers.CharField(source='doctor.user.get_full_name', read_only=True)
-
-#     class Meta:
-#         model = DoctorEducation
-#         fields = ['id', 'doctor', 'doctor_name', 'education', 'education_id', 'created_at']
-#         read_only_fields = ['id', 'created_at']
-
-#     def validate_education_id(self, value):
-#         """Ensure education exists."""
-#         try:
-#             Education.objects.get(pk=value)
-#             return value
-#         except Education.DoesNotExist:
-#             raise serializers.ValidationError("Education not found.")
-
-#     def validate(self, attrs):
-#         """Ensure no duplicate education for the same doctor."""
-#         doctor = attrs.get('doctor')
-#         education_id = attrs.get('education_id')
-        
-#         if doctor and education_id:
-#             queryset = DoctorEducation.objects.filter(doctor=doctor, education_id=education_id)
-#             if self.instance:
-#                 queryset = queryset.exclude(pk=self.instance.pk)
-            
-#             if queryset.exists():
-#                 raise serializers.ValidationError("This education already exists for the doctor.")
-        
-#         return attrs
-
-#     @transaction.atomic
-#     def create(self, validated_data):
-#         """Create doctor education."""
-#         education_id = validated_data.pop('education_id')
-#         doctor_education = DoctorEducation.objects.create(
-#             doctor=validated_data['doctor'],
-#             education_id=education_id
-#         )
-#         return doctor_education
-
-#     @transaction.atomic
-#     def update(self, instance, validated_data):
-#         """Update doctor education."""
-#         if 'education_id' in validated_data:
-#             instance.education_id = validated_data.pop('education_id')
-#         return super().update(instance, validated_data)
-
-
-# class DoctorCertificationSerializer(serializers.ModelSerializer):
-#     """Serializer for doctor certifications."""
-    
-#     certification = CertificationSerializer(read_only=True)
-#     certification_id = serializers.UUIDField(write_only=True)
-#     doctor_name = serializers.CharField(source='doctor.user.get_full_name', read_only=True)
-
-#     class Meta:
-#         model = DoctorCertification
-#         fields = ['id', 'doctor', 'doctor_name', 'certification', 'certification_id', 'created_at']
-#         read_only_fields = ['id', 'created_at']
-
-#     def validate_certification_id(self, value):
-#         """Ensure certification exists."""
-#         try:
-#             Certification.objects.get(pk=value)
-#             return value
-#         except Certification.DoesNotExist:
-#             raise serializers.ValidationError("Certification not found.")
-
-#     def validate(self, attrs):
-#         """Ensure no duplicate certification for the same doctor."""
-#         doctor = attrs.get('doctor')
-#         certification_id = attrs.get('certification_id')
-        
-#         if doctor and certification_id:
-#             queryset = DoctorCertification.objects.filter(doctor=doctor, certification_id=certification_id)
-#             if self.instance:
-#                 queryset = queryset.exclude(pk=self.instance.pk)
-            
-#             if queryset.exists():
-#                 raise serializers.ValidationError("This certification already exists for the doctor.")
-        
-#         return attrs
-
-#     @transaction.atomic
-#     def create(self, validated_data):
-#         """Create doctor certification."""
-#         certification_id = validated_data.pop('certification_id')
-#         doctor_certification = DoctorCertification.objects.create(
-#             doctor=validated_data['doctor'],
-#             certification_id=certification_id
-#         )
-#         return doctor_certification
-
-#     @transaction.atomic
-#     def update(self, instance, validated_data):
-#         """Update doctor certification."""
-#         if 'certification_id' in validated_data:
-#             instance.certification_id = validated_data.pop('certification_id')
-#         return super().update(instance, validated_data)
-
-
-# class ConsultationFeeSerializer(serializers.ModelSerializer):
-#     """Serializer for consultation fees."""
-    
-#     service_fee = ServiceFeeSerializer(read_only=True)
-#     service_fee_id = serializers.UUIDField(write_only=True)
-#     doctor_name = serializers.CharField(source='doctor.user.get_full_name', read_only=True)
-#     duration_display = serializers.CharField(source='service_fee.get_duration_display', read_only=True)
-
-#     class Meta:
-#         model = ConsultationFee
-#         fields = [
-#             'id', 'doctor', 'doctor_name', 'service_fee', 'service_fee_id',
-#             'duration_display', 'created_at', 'updated_at'
-#         ]
-#         read_only_fields = ['id', 'created_at', 'updated_at']
-
-#     def validate_service_fee_id(self, value):
-#         """Ensure service fee exists."""
-#         try:
-#             ServiceFee.objects.get(pk=value)
-#             return value
-#         except ServiceFee.DoesNotExist:
-#             raise serializers.ValidationError("Service fee not found.")
-
-#     def validate(self, attrs):
-#         """Ensure no duplicate consultation fees for the same doctor and service fee."""
-#         doctor = attrs.get('doctor')
-#         service_fee_id = attrs.get('service_fee_id')
-        
-#         if doctor and service_fee_id:
-#             queryset = ConsultationFee.objects.filter(doctor=doctor, service_fee_id=service_fee_id)
-#             if self.instance:
-#                 queryset = queryset.exclude(pk=self.instance.pk)
-            
-#             if queryset.exists():
-#                 raise serializers.ValidationError("This consultation fee already exists for the doctor.")
-        
-#         return attrs
-
-
-# class DoctorAvailabilitySerializer(serializers.ModelSerializer):
-#     """Serializer for doctor availability."""
-    
-#     availability_slot = AvailabilitySlotSerializer(read_only=True)
-#     availability_slot_id = serializers.UUIDField(write_only=True)
-#     doctor_name = serializers.CharField(source='doctor.user.get_full_name', read_only=True)
-#     day_name = serializers.CharField(source='availability_slot.get_day_of_week_display', read_only=True)
-
-#     class Meta:
-#         model = DoctorAvailability
-#         fields = [
-#             'id', 'doctor', 'doctor_name', 'availability_slot', 'availability_slot_id',
-#             'day_name', 'created_at', 'updated_at'
-#         ]
-#         read_only_fields = ['id', 'created_at', 'updated_at']
-
-#     def validate_availability_slot_id(self, value):
-#         """Ensure availability slot exists."""
-#         try:
-#             AvailabilitySlot.objects.get(pk=value)
-#             return value
-#         except AvailabilitySlot.DoesNotExist:
-#             raise serializers.ValidationError("Availability slot not found.")
-
-#     def validate(self, attrs):
-#         """Ensure no duplicate availability for the same doctor and slot."""
-#         doctor = attrs.get('doctor')
-#         availability_slot_id = attrs.get('availability_slot_id')
-        
-#         if doctor and availability_slot_id:
-#             queryset = DoctorAvailability.objects.filter(doctor=doctor, availability_slot_id=availability_slot_id)
-#             if self.instance:
-#                 queryset = queryset.exclude(pk=self.instance.pk)
-            
-#             if queryset.exists():
-#                 raise serializers.ValidationError("This availability already exists for the doctor.")
-        
-#         return attrs
-
 class PrescriptionItemSerializer(serializers.ModelSerializer):
     """Serializer for prescription items."""
     

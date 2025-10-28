@@ -14,18 +14,18 @@ class PaymentMethod(models.Model):
     """Payment methods for users (cards, wallets, bank accounts)."""
     
     PROVIDER_CHOICES = [
-        ('Stripe', _('Stripe')),
-        ('JazzCash', _('JazzCash')),
-        ('EasyPaisa', _('EasyPaisa')),
-        ('Bank', _('Bank')),
-        ('Cash', _('Cash')),
+        ('stripe', _('Stripe')),
+        ('jazz_cash', _('JazzCash')),
+        ('easy_paisa', _('EasyPaisa')),
+        ('bank', _('Bank')),
+        ('cash', _('Cash')),
     ]
 
     TYPE_CHOICES = [
-        ('Card', _('Card')),
-        ('Wallet', _('Wallet')),
-        ('Bank', _('Bank')),
-        ('Cash', _('Cash')),
+        ('card', _('Card')),
+        ('wallet', _('Wallet')),
+        ('bank', _('Bank')),
+        ('cash', _('Cash')),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -95,22 +95,22 @@ class Transaction(models.Model):
     """Financial transactions for credit purchases and payouts."""
     
     STATUS_CHOICES = [
-        ('Pending', _('Pending')),
-        ('Processing', _('Processing')),
-        ('Success', _('Success')),
-        ('Failed', _('Failed')),
-        ('Refunded', _('Refunded')),
-        ('Partially Refunded', _('Partially Refunded')),
+        ('pending', _('Pending')),
+        ('processing', _('Processing')),
+        ('success', _('Success')),
+        ('failed', _('Failed')),
+        ('refunded', _('Refunded')),
+        ('partially_refunded', _('Partially Refunded')),
     ]
 
     PURPOSE_CHOICES = [
-        ('Credit Purchase', _('Credit Purchase')),
-        ('Payout', _('Payout')),
+        ('credit_purchase', _('Credit Purchase')),
+        ('payout', _('Payout')),
     ]
 
     PURPOSE_TYPE_CHOICES = [
-        ('PackagePurchase', _('Package Purchase')),
-        ('Payout', _('Payout')),
+        ('package_purchase', _('Package Purchase')),
+        ('payout', _('Payout')),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -211,10 +211,10 @@ class Refund(models.Model):
     """Refund records for transactions."""
     
     STATUS_CHOICES = [
-        ('Initiated', _('Initiated')),
-        ('Processing', _('Processing')),
-        ('Processed', _('Processed')),
-        ('Failed', _('Failed')),
+        ('initiated', _('Initiated')),
+        ('processing', _('Processing')),
+        ('processed', _('Processed')),
+        ('failed', _('Failed')),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -295,9 +295,9 @@ class AppointmentBilling(models.Model):
     """Billing records for appointments."""
     
     STATUS_CHOICES = [
-        ('Draft', _('Draft')),
-        ('Billed', _('Billed')),
-        ('Cancelled', _('Cancelled')),
+        ('draft', _('Draft')),
+        ('billed', _('Billed')),
+        ('cancelled', _('Cancelled')),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -401,22 +401,22 @@ class WalletLedger(models.Model):
     """Ledger entries for wallet transactions."""
     
     TRANSACTION_TYPE_CHOICES = [
-        ('Earning', _('Earning')),
-        ('Withdrawal', _('Withdrawal')),
-        ('Refund', _('Refund')),
-        ('Adjustment', _('Adjustment')),
+        ('earning', _('Earning')),
+        ('withdrawal', _('Withdrawal')),
+        ('refund', _('Refund')),
+        ('adjustment', _('Adjustment')),
     ]
 
     BALANCE_TYPE_CHOICES = [
-        ('Pending', _('Pending')),
-        ('Available', _('Available')),
+        ('pending', _('Pending')),
+        ('available', _('Available')),
     ]
 
     STATUS_CHOICES = [
-        ('Pending', _('Pending')),
-        ('Available', _('Available')),
-        ('Withdrawn', _('Withdrawn')),
-        ('Refunded', _('Refunded')),
+        ('pending', _('Pending')),
+        ('available', _('Available')),
+        ('withdrawn', _('Withdrawn')),
+        ('refunded', _('Refunded')),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -505,11 +505,11 @@ class PayoutRequest(models.Model):
     """Payout requests for withdrawing funds from wallet."""
     
     STATUS_CHOICES = [
-        ('Pending', _('Pending')),
-        ('Processing', _('Processing')),
-        ('Completed', _('Completed')),
-        ('Failed', _('Failed')),
-        ('Cancelled', _('Cancelled')),
+        ('pending', _('Pending')),
+        ('processing', _('Processing')),
+        ('completed', _('Completed')),
+        ('failed', _('Failed')),
+        ('cancelled', _('Cancelled')),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

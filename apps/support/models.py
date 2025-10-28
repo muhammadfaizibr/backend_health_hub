@@ -6,26 +6,26 @@ from apps.files.models import File
 
 class Ticket(models.Model):
     CATEGORY_CHOICES = [
-        ('Technical Issue', 'Technical Issue'),
-        ('Payment Billing', 'Payment Billing'),
-        ('Appointment', 'Appointment'),
-        ('Account Profile', 'Account Profile'),
-        ('Other', 'Other'),
+        ('technical_issue', 'Technical Issue'),
+        ('payment_billing', 'Payment Billing'),
+        ('appointment', 'Appointment'),
+        ('account_profile', 'Account Profile'),
+        ('other', 'Other'),
     ]
 
     PRIORITY_CHOICES = [
-        ('Low', 'Low'),
-        ('Medium', 'Medium'),
-        ('High', 'High'),
-        ('Urgent', 'Urgent'),
+        ('low', 'Low'),
+        ('medium', 'Medium'),
+        ('high', 'High'),
+        ('urgent', 'Urgent'),
     ]
 
     STATUS_CHOICES = [
-        ('Open', 'Open'),
-        ('In Progress', 'In Progress'),
-        ('Waiting for User', 'Waiting for User'),
-        ('Resolved', 'Resolved'),
-        ('Closed', 'Closed'),
+        ('open', 'Open'),
+        ('in_progress', 'In Progress'),
+        ('waiting_for_user', 'Waiting for User'),
+        ('resolved', 'Resolved'),
+        ('closed', 'Closed'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -34,8 +34,8 @@ class Ticket(models.Model):
     subject = models.CharField(max_length=255)
     description = models.TextField()
     category = models.CharField(max_length=30, choices=CATEGORY_CHOICES)
-    priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default='Medium')
-    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default='Open')
+    priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default='medium')
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default='open')
     assigned_to = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='+')  # Staff
     related_object_type = models.CharField(max_length=50, blank=True, null=True)
     related_object_id = models.UUIDField(blank=True, null=True)

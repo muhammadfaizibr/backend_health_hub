@@ -54,11 +54,11 @@ class User(AbstractBaseUser, PermissionsMixin):
     ]
     
     ROLE_CHOICES = [ 
-        ('Patient', 'Patient'),
-        ('Doctor', 'Doctor'),
-        ('Translator', 'Translator'),
-        ('Organization', 'Organization'),
-        ('Admin', 'Admin'),
+        ('patient', 'Patient'),
+        ('doctor', 'Doctor'),
+        ('translator', 'Translator'),
+        ('organization', 'Organization'),
+        ('admin', 'Admin'),
     ]
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -79,7 +79,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     verification_id = models.CharField(max_length=255, unique=True, blank=True, null=True, db_index=True)
     bio = models.TextField(blank=True)
     
-    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='Patient', db_index=True)
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='patient', db_index=True)
     is_active = models.BooleanField(_('active'), default=True)
     is_staff = models.BooleanField(_('staff status'), default=False)
     
@@ -179,11 +179,11 @@ class Experience(models.Model):
     """Professional work experience."""
     
     EMPLOYMENT_TYPE_CHOICES = [
-        ('House Job', 'House Job'),
-        ('Part Time', 'Part Time'),
-        ('Full Time', 'Full Time'),
-        ('Contract', 'Contract'),
-        ('Internship', 'Internship'),
+        ('house_job', 'House Job'),
+        ('part_time', 'Part Time'),
+        ('full_time', 'Full Time'),
+        ('contract', 'Contract'),
+        ('internship', 'Internship'),
     ]
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

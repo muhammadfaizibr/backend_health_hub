@@ -10,9 +10,9 @@ class Profile(models.Model):
     """Organization profile with credit management capabilities."""
     
     SIZE_CHOICES = [
-        ('Small', 'Small (1-50 employees)'),
-        ('Medium', 'Medium (51-200 employees)'),
-        ('Large', 'Large (201+ employees)'),
+        ('small', 'Small (1-50 employees)'),
+        ('medium', 'Medium (51-200 employees)'),
+        ('large', 'Large (201+ employees)'),
     ]
     
     CURRENCY_CHOICES = [
@@ -123,11 +123,11 @@ class CreditsLedger(models.Model):
     """Tracks all credit transactions for organizations."""
     
     TRANSACTION_TYPE_CHOICES = [
-        ('Purchase', 'Purchase'),
-        ('Deduction', 'Deduction'),
-        ('Refund', 'Refund'),
-        ('Adjustment', 'Adjustment'),
-        ('Bonus', 'Bonus'),
+        ('purchase', 'Purchase'),
+        ('deduction', 'Deduction'),
+        ('refund', 'Refund'),
+        ('adjustment', 'Adjustment'),
+        ('bonus', 'Bonus'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -216,10 +216,10 @@ class PackagePurchase(models.Model):
     """Records credit package purchases by organizations."""
     
     STATUS_CHOICES = [
-        ('Pending', 'Pending'),
-        ('Completed', 'Completed'),
-        ('Failed', 'Failed'),
-        ('Refunded', 'Refunded'),
+        ('pending', 'Pending'),
+        ('completed', 'Completed'),
+        ('failed', 'Failed'),
+        ('refunded', 'Refunded'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

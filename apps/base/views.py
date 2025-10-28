@@ -28,7 +28,7 @@ from .serializers import (
     UserLoginSerializer, ChangePasswordSerializer, ForgotPasswordSerializer,
     ResetPasswordSerializer
 )
-
+from .permissions import BaseReadOnlyPermission
 
 class UserRegistrationView(generics.CreateAPIView):
     """
@@ -273,20 +273,33 @@ class UserViewSet(viewsets.ModelViewSet):
         )
 
 
+
 class UserLanguageViewSet(viewsets.ModelViewSet):
     """ViewSet for managing user languages."""
     
     queryset = UserLanguage.objects.all()
     serializer_class = UserLanguageSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, BaseReadOnlyPermission]
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ['language_code']
+    filterset_fields = ['language_code', 'user']
 
     def get_queryset(self):
-        """Filter languages for current user or allow admin to see all."""
-        if self.request.user.is_staff:
-            return self.queryset.select_related('user')
-        return self.queryset.filter(user=self.request.user).select_related('user')
+        """
+        Allow filtering by user parameter for public viewing.
+        If no filter, show only current user's languages.
+        """
+        queryset = self.queryset.select_related('user')
+        
+        # Allow filtering by user parameter (for viewing doctor profiles)
+        user_id = self.request.query_params.get('user', None)
+        if user_id:
+            return queryset.filter(user_id=user_id)
+        
+        # If no user filter and not staff, show only own records
+        if not self.request.user.is_staff:
+            return queryset.filter(user=self.request.user)
+        
+        return queryset
 
     def perform_create(self, serializer):
         """Automatically assign current user to language."""
@@ -311,7 +324,7 @@ class EducationViewSet(viewsets.ModelViewSet):
     
     queryset = Education.objects.all()
     serializer_class = EducationSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, BaseReadOnlyPermission]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['user', 'field', 'degree']
     search_fields = ['school', 'degree', 'field']
@@ -319,10 +332,22 @@ class EducationViewSet(viewsets.ModelViewSet):
     ordering = ['-start_date']
 
     def get_queryset(self):
-        """Filter education for current user or allow admin to see all."""
-        if self.request.user.is_staff:
-            return self.queryset.select_related('user')
-        return self.queryset.filter(user=self.request.user).select_related('user')
+        """
+        Allow filtering by user parameter for public viewing.
+        If no filter, show only current user's education.
+        """
+        queryset = self.queryset.select_related('user')
+        
+        # Allow filtering by user parameter (for viewing doctor profiles)
+        user_id = self.request.query_params.get('user', None)
+        if user_id:
+            return queryset.filter(user_id=user_id)
+        
+        # If no user filter and not staff, show only own records
+        if not self.request.user.is_staff:
+            return queryset.filter(user=self.request.user)
+        
+        return queryset
 
     def perform_create(self, serializer):
         """Assign current user."""
@@ -347,7 +372,7 @@ class ExperienceViewSet(viewsets.ModelViewSet):
     
     queryset = Experience.objects.all()
     serializer_class = ExperienceSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, BaseReadOnlyPermission]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['user', 'employment_type']
     search_fields = ['title', 'company_or_organization', 'location']
@@ -355,10 +380,22 @@ class ExperienceViewSet(viewsets.ModelViewSet):
     ordering = ['-start_date']
 
     def get_queryset(self):
-        """Filter experience for current user or allow admin to see all."""
-        if self.request.user.is_staff:
-            return self.queryset.select_related('user')
-        return self.queryset.filter(user=self.request.user).select_related('user')
+        """
+        Allow filtering by user parameter for public viewing.
+        If no filter, show only current user's experience.
+        """
+        queryset = self.queryset.select_related('user')
+        
+        # Allow filtering by user parameter (for viewing doctor profiles)
+        user_id = self.request.query_params.get('user', None)
+        if user_id:
+            return queryset.filter(user_id=user_id)
+        
+        # If no user filter and not staff, show only own records
+        if not self.request.user.is_staff:
+            return queryset.filter(user=self.request.user)
+        
+        return queryset
 
     def perform_create(self, serializer):
         """Assign current user."""
@@ -383,7 +420,7 @@ class CertificationViewSet(viewsets.ModelViewSet):
     
     queryset = Certification.objects.all()
     serializer_class = CertificationSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, BaseReadOnlyPermission]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['user', 'issuing_organization']
     search_fields = ['title', 'issuing_organization', 'credential_id']
@@ -391,10 +428,22 @@ class CertificationViewSet(viewsets.ModelViewSet):
     ordering = ['-issue_date']
 
     def get_queryset(self):
-        """Filter certifications for current user or allow admin to see all."""
-        if self.request.user.is_staff:
-            return self.queryset.select_related('user', 'file')
-        return self.queryset.filter(user=self.request.user).select_related('user', 'file')
+        """
+        Allow filtering by user parameter for public viewing.
+        If no filter, show only current user's certifications.
+        """
+        queryset = self.queryset.select_related('user', 'file')
+        
+        # Allow filtering by user parameter (for viewing doctor profiles)
+        user_id = self.request.query_params.get('user', None)
+        if user_id:
+            return queryset.filter(user_id=user_id)
+        
+        # If no user filter and not staff, show only own records
+        if not self.request.user.is_staff:
+            return queryset.filter(user=self.request.user)
+        
+        return queryset
 
     def perform_create(self, serializer):
         """Assign current user."""
@@ -419,17 +468,29 @@ class AvailabilitySlotViewSet(viewsets.ModelViewSet):
     
     queryset = AvailabilitySlot.objects.all()
     serializer_class = AvailabilitySlotSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, BaseReadOnlyPermission]
     filter_backends = [DjangoFilterBackend, OrderingFilter]
     filterset_fields = ['user', 'day_of_week', 'is_active']
     ordering_fields = ['day_of_week', 'start_time']
     ordering = ['day_of_week', 'start_time']
 
     def get_queryset(self):
-        """Filter slots for current user or allow admin to see all."""
-        if self.request.user.is_staff:
-            return self.queryset.select_related('user')
-        return self.queryset.filter(user=self.request.user).select_related('user')
+        """
+        Allow filtering by user parameter for public viewing.
+        If no filter, show only current user's slots.
+        """
+        queryset = self.queryset.select_related('user')
+        
+        # Allow filtering by user parameter (for viewing doctor profiles)
+        user_id = self.request.query_params.get('user', None)
+        if user_id:
+            return queryset.filter(user_id=user_id)
+        
+        # If no user filter and not staff, show only own records
+        if not self.request.user.is_staff:
+            return queryset.filter(user=self.request.user)
+        
+        return queryset
 
     def perform_create(self, serializer):
         """Assign current user."""
@@ -485,22 +546,35 @@ class AvailabilitySlotViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(slots, many=True)
         return Response(serializer.data)
 
+
 class ServiceFeeViewSet(viewsets.ModelViewSet):
     """ViewSet for managing service fees."""
     
     queryset = ServiceFee.objects.all()
     serializer_class = ServiceFeeSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, BaseReadOnlyPermission]
     filter_backends = [DjangoFilterBackend, OrderingFilter]
     filterset_fields = ['user', 'duration', 'is_active', 'currency']
     ordering_fields = ['duration', 'fee']
     ordering = ['duration']
 
     def get_queryset(self):
-        """Filter fees for current user or allow admin to see all."""
-        if self.request.user.is_staff:
-            return self.queryset.select_related('user')
-        return self.queryset.filter(user=self.request.user).select_related('user')
+        """
+        Allow filtering by user parameter for public viewing.
+        If no filter, show only current user's fees.
+        """
+        queryset = self.queryset.select_related('user')
+        
+        # Allow filtering by user parameter (for viewing doctor profiles)
+        user_id = self.request.query_params.get('user', None)
+        if user_id:
+            return queryset.filter(user_id=user_id)
+        
+        # If no user filter and not staff, show only own records
+        if not self.request.user.is_staff:
+            return queryset.filter(user=self.request.user)
+        
+        return queryset
 
     def perform_create(self, serializer):
         """Assign current user."""

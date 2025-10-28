@@ -9,6 +9,7 @@ from .models import (
 from apps.base.models import AvailabilitySlot
 from apps.base.serializers import UserSerializer
 from apps.files.serializers import FileSerializer
+from apps.doctors.models import Profile as DoctorProfile
 from apps.translators.models import Profile as TranslatorProfile
 from apps.files.models import File
 
@@ -292,6 +293,229 @@ class AppointmentSerializer(serializers.ModelSerializer):
             translator=translator,
             appointment_number=appointment_number,
             **validated_data
+        )
+        
+        return appointment
+    
+class CreateAppointmentSerializer(serializers.Serializer):
+    """Serializer for creating appointment with automatic case and time slot creation."""
+    
+    # Case fields (optional - will auto-create if not provided)
+    case_id = serializers.UUIDField(required=False, allow_null=True)
+    case_title = serializers.CharField(max_length=255, required=False)
+    case_description = serializers.CharField(required=False)
+    
+    # Doctor (required)
+    doctor_id = serializers.UUIDField(required=True)
+    
+    # Time slot fields
+    appointment_date = serializers.DateField(required=True)
+    start_time = serializers.TimeField(required=True)
+    duration = serializers.IntegerField(required=True)
+    timezone = serializers.CharField(max_length=50, default='UTC')
+    
+    # Appointment fields
+    reason_for_visit = serializers.CharField(required=True)
+    special_requests = serializers.CharField(required=False, allow_blank=True)
+    is_translator_required = serializers.BooleanField(default=False)
+    language_preference = serializers.CharField(required=False, allow_null=True, allow_blank=True)
+    is_follow_up = serializers.BooleanField(default=False)
+    
+    def validate_appointment_date(self, value):
+        """Ensure date is not in the past."""
+        if value < timezone.now().date():
+            raise serializers.ValidationError("Cannot book appointments for past dates.")
+        return value
+    
+    def validate_duration(self, value):
+        """Validate duration is one of the allowed choices."""
+        allowed_durations = [choice[0] for choice in AppointmentTimeSlot.DURATION_CHOICES]
+        if value not in allowed_durations:
+            raise serializers.ValidationError(
+                f"Duration must be one of: {', '.join(map(str, allowed_durations))} minutes."
+            )
+        return value
+    
+    def validate_doctor_id(self, value):
+        """Ensure doctor exists."""
+        if not DoctorProfile.objects.filter(id=value).exists():
+            raise serializers.ValidationError("Doctor not found.")
+        return value
+    
+    def validate_case_id(self, value):
+        """Ensure case exists and belongs to the patient."""
+        if value:
+            request = self.context.get('request')
+            try:
+                case = Case.objects.get(id=value)
+                if request.user.role == 'Patient':
+                    if case.patient.user != request.user:
+                        raise serializers.ValidationError("Case does not belong to you.")
+            except Case.DoesNotExist:
+                raise serializers.ValidationError("Case not found.")
+        return value
+    
+    def validate(self, attrs):
+        """Comprehensive validation for the booking."""
+        request = self.context.get('request')
+        doctor_id = attrs['doctor_id']
+        appointment_date = attrs['appointment_date']
+        start_time = attrs['start_time']
+        duration = attrs['duration']
+        
+        # Get doctor
+        try:
+            doctor = DoctorProfile.objects.get(id=doctor_id)
+        except DoctorProfile.DoesNotExist:
+            raise serializers.ValidationError({"doctor_id": "Doctor not found."})
+        
+        # Calculate end time
+        start_datetime = datetime.combine(appointment_date, start_time)
+        end_datetime = start_datetime + timedelta(minutes=duration)
+        end_time = end_datetime.time()
+        
+        # Check if end time goes to next day
+        if end_datetime.date() != appointment_date:
+            raise serializers.ValidationError({
+                "start_time": "Appointment cannot extend past midnight. Please choose an earlier time."
+            })
+        
+        # Get day of week (0=Sunday format)
+        day_of_week = (appointment_date.weekday() + 1) % 7
+        
+        # Check doctor availability
+        availability_slots = AvailabilitySlot.objects.filter(
+            user=doctor.user,
+            day_of_week=day_of_week,
+            is_active=True
+        )
+        
+        if not availability_slots.exists():
+            day_name = dict(AvailabilitySlot.DAY_CHOICES)[day_of_week]
+            raise serializers.ValidationError({
+                "appointment_date": f"Doctor is not available on {day_name}s."
+            })
+        
+        # Check if time falls within availability
+        is_within_availability = False
+        for slot in availability_slots:
+            if slot.start_time <= start_time < slot.end_time and slot.start_time < end_time <= slot.end_time:
+                is_within_availability = True
+                break
+        
+        if not is_within_availability:
+            raise serializers.ValidationError({
+                "start_time": f"The selected time ({start_time} - {end_time}) is not within doctor's available hours."
+            })
+        
+        # Store calculated end_time for later use
+        attrs['end_time'] = end_time
+        attrs['doctor'] = doctor
+        
+        return attrs
+    
+    @transaction.atomic
+    def create(self, validated_data):
+        """Create case, time slot, and appointment in a single transaction."""
+        request = self.context.get('request')
+        
+        # Extract data
+        case_id = validated_data.pop('case_id', None)
+        case_title = validated_data.pop('case_title', None)
+        case_description = validated_data.pop('case_description', None)
+        doctor = validated_data.pop('doctor')
+        doctor_id = validated_data.pop('doctor_id')
+        
+        appointment_date = validated_data.pop('appointment_date')
+        start_time = validated_data.pop('start_time')
+        end_time = validated_data.pop('end_time')
+        duration = validated_data.pop('duration')
+        timezone_str = validated_data.pop('timezone')
+        
+        language_preference = validated_data.pop('language_preference', None)
+        
+        # Get patient profile
+        try:
+            patient_profile = Profile.objects.get(user=request.user)
+        except Profile.DoesNotExist:
+            raise serializers.ValidationError("Patient profile not found.")
+        
+        # Step 1: Get or create case
+        if case_id:
+            try:
+                case = Case.objects.get(id=case_id)
+                # Verify case belongs to patient
+                if case.patient != patient_profile:
+                    raise serializers.ValidationError("Case does not belong to you.")
+            except Case.DoesNotExist:
+                raise serializers.ValidationError("Case not found.")
+        else:
+            # Auto-create case
+            if not case_title:
+                case_title = f"Medical Consultation - {appointment_date.strftime('%B %d, %Y')}"
+            if not case_description:
+                case_description = validated_data.get('reason_for_visit', 'General consultation')
+            
+            case = Case.objects.create(
+                title=case_title,
+                patient=patient_profile,
+                doctor=doctor,
+                description=case_description,
+                status='open',
+                created_by=request.user
+            )
+        
+        # Step 2: Check for overlapping time slots for this doctor
+        overlapping_slots = AppointmentTimeSlot.objects.filter(
+            case__doctor=doctor,
+            date=appointment_date,
+            is_booked=True
+        )
+        
+        for slot in overlapping_slots:
+            slot_end = datetime.combine(appointment_date, slot.start_time) + timedelta(minutes=slot.duration)
+            slot_end_time = slot_end.time()
+            
+            # Check if times overlap
+            if not (end_time <= slot.start_time or start_time >= slot_end_time):
+                raise serializers.ValidationError({
+                    "start_time": f"This time slot conflicts with an existing appointment at {slot.start_time}."
+                })
+        
+        # Step 3: Create time slot
+        time_slot = AppointmentTimeSlot.objects.create(
+            case=case,
+            date=appointment_date,
+            start_time=start_time,
+            duration=duration,
+            timezone=timezone_str,
+            is_booked=True,
+            created_by=request.user
+        )
+        
+        # Step 4: Handle translator requirements
+        translator_status = 'not_needed'
+        is_translator_required = validated_data.pop('is_translator_required', False)
+        
+        if is_translator_required or (language_preference and language_preference != 'not-required'):
+            translator_status = 'pending'
+            is_translator_required = True
+        
+        # Step 5: Create appointment
+        last_appointment = case.appointments.order_by('-appointment_number').first()
+        appointment_number = (last_appointment.appointment_number + 1) if last_appointment else 1
+        
+        appointment = Appointment.objects.create(
+            case=case,
+            time_slot=time_slot,
+            status='confirmed',
+            is_translator_required=is_translator_required,
+            translator_status=translator_status,
+            reason_for_visit=validated_data.get('reason_for_visit'),
+            special_requests=validated_data.get('special_requests', ''),
+            is_follow_up=validated_data.get('is_follow_up', False),
+            appointment_number=appointment_number,
+            created_by=request.user
         )
         
         return appointment
