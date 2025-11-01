@@ -2,7 +2,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError  # Changed import
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 from django.db import transaction
@@ -11,12 +11,10 @@ from django.db.models.functions import Concat
 
 from .models import (
     Profile, 
-    # DoctorExperience, DoctorEducation, DoctorCertification, ConsultationFee, DoctorAvailability, 
     Prescription, PrescriptionItem, DoctorReview
 )
 from .serializers import (
     ProfileSerializer, 
-    # DoctorExperienceSerializer, DoctorEducationSerializer, DoctorCertificationSerializer, ConsultationFeeSerializer, DoctorAvailabilitySerializer,
     PrescriptionSerializer, PrescriptionItemSerializer, DoctorReviewSerializer
 )
 
@@ -54,7 +52,7 @@ class ProfileViewSet(viewsets.ModelViewSet):
             raise PermissionDenied("Only doctors can create doctor profiles.")
         
         if Profile.objects.filter(user=self.request.user).exists():
-            raise ValidationError("Doctor profile already exists for this user.")
+            raise ValidationError({'error': 'Doctor profile already exists for this user.'})
         
         serializer.save(user=self.request.user)
 
@@ -216,7 +214,6 @@ class ProfileViewSet(viewsets.ModelViewSet):
             'patient__user'
         ).order_by('-created_at')
         
-        # Assuming you have DoctorReviewSerializer
         from .serializers import DoctorReviewSerializer
         serializer = DoctorReviewSerializer(reviews, many=True)
         return Response(serializer.data)
@@ -280,14 +277,14 @@ class PrescriptionViewSet(viewsets.ModelViewSet):
             if appointment_id:
                 appointment = Appointment.objects.get(pk=appointment_id)
                 if appointment.case != case:
-                    raise ValidationError("Appointment must belong to the specified case.")
+                    raise ValidationError({'appointment': 'Appointment must belong to the specified case.'})
                 kwargs['appointment'] = appointment
             
             serializer.save(**kwargs)
         except Case.DoesNotExist:
-            raise ValidationError("Case not found.")
+            raise ValidationError({'case': 'Case not found.'})
         except Appointment.DoesNotExist:
-            raise ValidationError("Appointment not found.")
+            raise ValidationError({'appointment': 'Appointment not found.'})
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated])
     def add_items(self, request, pk=None):
@@ -360,7 +357,7 @@ class DoctorReviewViewSet(viewsets.ModelViewSet):
     serializer_class = DoctorReviewSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend, OrderingFilter]
-    filterset_fields = ['doctor', 'patient', 'status', 'rating']
+    filterset_fields = ['doctor', 'patient', 'status', 'rating', 'appointment']
     ordering_fields = ['created_at', 'rating']
     ordering = ['-created_at']
     http_method_names = ['get', 'post', 'patch', 'delete', 'head', 'options']
@@ -402,31 +399,30 @@ class DoctorReviewViewSet(viewsets.ModelViewSet):
         
         patient_profile = self.get_patient_profile()
         if not patient_profile:
-            raise ValidationError("Patient profile not found.")
+            raise ValidationError({'patient': 'Patient profile not found.'})
         
-        doctor_id = self.request.data.get('doctor_id')
         appointment_id = self.request.data.get('appointment_id')
         
         try:
-            doctor = Profile.objects.get(pk=doctor_id)
             
             from apps.patients.models import Appointment
+            appointment = Appointment.objects.get(pk=appointment_id)
+            doctor = Profile.objects.get(pk=appointment.case.doctor.id)
             kwargs = {'patient': patient_profile, 'doctor': doctor}
             
             if appointment_id:
-                appointment = Appointment.objects.get(pk=appointment_id)
                 # Verify appointment belongs to patient and doctor
                 if appointment.case.patient != patient_profile:
-                    raise ValidationError("Appointment does not belong to you.")
-                if appointment.time_slot.doctor != doctor:
-                    raise ValidationError("Appointment is not with this doctor.")
+                    raise ValidationError({'appointment': 'Appointment does not belong to you.'})
+                if appointment.case.doctor != doctor:
+                    raise ValidationError({'appointment': 'Appointment is not with this doctor.'})
                 kwargs['appointment'] = appointment
             
             serializer.save(**kwargs)
         except Profile.DoesNotExist:
-            raise ValidationError("Doctor not found.")
+            raise ValidationError({'doctor': 'Doctor not found.'})
         except Appointment.DoesNotExist:
-            raise ValidationError("Appointment not found.")
+            raise ValidationError({'appointment': 'Appointment not found.'})
 
     @action(detail=True, methods=['patch'], permission_classes=[IsAuthenticated])
     def moderate(self, request, pk=None):

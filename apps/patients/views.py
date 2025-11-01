@@ -210,11 +210,29 @@ class ReportViewSet(viewsets.ModelViewSet):
     queryset = Report.objects.select_related('case', 'appointment', 'file', 'uploaded_by')
     serializer_class = ReportSerializer
     permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['case', 'appointment', 'report_type']  # Add this line
 
     def get_queryset(self):
+        queryset = self.queryset
+        
         if self.request.user.role == 'Patient':
-            return self.queryset.filter(case__patient__user=self.request.user)
-        return self.queryset.all() if self.request.user.is_staff else self.queryset.none()
+            queryset = queryset.filter(case__patient__user=self.request.user)
+        elif self.request.user.role == 'Doctor':
+            doctor = DoctorProfile.objects.filter(user=self.request.user).first()
+            if doctor:
+                queryset = queryset.filter(case__doctor=doctor)
+            else:
+                return queryset.none()
+        elif not self.request.user.is_staff:
+            return queryset.none()
+        
+        # Filter by appointment if provided in query params
+        appointment_id = self.request.query_params.get('appointment')
+        if appointment_id:
+            queryset = queryset.filter(appointment_id=appointment_id)
+            
+        return queryset
 
     def perform_create(self, serializer):
         serializer.save(uploaded_by=self.request.user)

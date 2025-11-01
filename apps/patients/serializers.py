@@ -343,16 +343,23 @@ class CreateAppointmentSerializer(serializers.Serializer):
         return value
     
     def validate_case_id(self, value):
-        """Ensure case exists and belongs to the patient."""
+        """Ensure case exists and belongs to the patient if provided."""
         if value:
             request = self.context.get('request')
             try:
-                case = Case.objects.get(id=value)
+                case = Case.objects.select_related('patient__user', 'doctor__user').get(id=value)
+                
+                # Verify case belongs to the current patient
                 if request.user.role == 'Patient':
                     if case.patient.user != request.user:
-                        raise serializers.ValidationError("Case does not belong to you.")
+                        raise serializers.ValidationError("This case does not belong to you.")
+                
+                # Store the case object for later use in validate()
+                self._validated_case = case
+                
             except Case.DoesNotExist:
-                raise serializers.ValidationError("Case not found.")
+                raise serializers.ValidationError("Case not found. Please verify the case ID.")
+        
         return value
     
     def validate(self, attrs):
@@ -362,12 +369,40 @@ class CreateAppointmentSerializer(serializers.Serializer):
         appointment_date = attrs['appointment_date']
         start_time = attrs['start_time']
         duration = attrs['duration']
+        case_id = attrs.get('case_id')
         
         # Get doctor
         try:
             doctor = DoctorProfile.objects.get(id=doctor_id)
         except DoctorProfile.DoesNotExist:
             raise serializers.ValidationError({"doctor_id": "Doctor not found."})
+        
+        # IMPORTANT: If case_id is provided, validate that all appointments for this case are with the same doctor
+        if case_id:
+            # Use the case we already fetched in validate_case_id
+            case = getattr(self, '_validated_case', None)
+            
+            if not case:
+                # Fallback: fetch the case if it wasn't stored
+                try:
+                    case = Case.objects.select_related('patient__user', 'doctor__user').get(id=case_id)
+                except Case.DoesNotExist:
+                    raise serializers.ValidationError({"case_id": "Case not found."})
+            
+            # Check if case already has a doctor assigned and it's different from the selected doctor
+            if case.doctor and case.doctor.id != doctor_id:
+                raise serializers.ValidationError({
+                    "doctor_id": f"This case is already assigned to Dr. {case.doctor.user.full_name}. All appointments for a case must be with the same doctor. Please select Dr. {case.doctor.user.full_name} or create a new case."
+                })
+            
+            # Check if case has any appointments with a different doctor
+            existing_appointment = case.appointments.select_related('case__doctor__user').first()
+            if existing_appointment:
+                existing_doctor = existing_appointment.case.doctor
+                if existing_doctor and existing_doctor.id != doctor_id:
+                    raise serializers.ValidationError({
+                        "doctor_id": f"This case has existing appointments with Dr. {existing_doctor.user.full_name}. All appointments for a case must be with the same doctor. Please select Dr. {existing_doctor.user.full_name} or create a new case."
+                    })
         
         # Calculate end time
         start_datetime = datetime.combine(appointment_date, start_time)
@@ -442,13 +477,26 @@ class CreateAppointmentSerializer(serializers.Serializer):
         
         # Step 1: Get or create case
         if case_id:
-            try:
-                case = Case.objects.get(id=case_id)
-                # Verify case belongs to patient
-                if case.patient != patient_profile:
-                    raise serializers.ValidationError("Case does not belong to you.")
-            except Case.DoesNotExist:
-                raise serializers.ValidationError("Case not found.")
+            # Use the case we already validated
+            case = getattr(self, '_validated_case', None)
+            
+            if not case:
+                # Fallback: fetch the case if it wasn't stored
+                try:
+                    case = Case.objects.select_related('patient__user', 'doctor__user').get(id=case_id)
+                    
+                    # Double-check ownership
+                    if case.patient != patient_profile:
+                        raise serializers.ValidationError("This case does not belong to you.")
+                        
+                except Case.DoesNotExist:
+                    raise serializers.ValidationError("Case not found.")
+            
+            # Ensure the case has the doctor assigned (if not already)
+            if not case.doctor:
+                case.doctor = doctor
+                case.save(update_fields=['doctor'])
+                    
         else:
             # Auto-create case
             if not case_title:
@@ -519,7 +567,7 @@ class CreateAppointmentSerializer(serializers.Serializer):
         )
         
         return appointment
-
+    
 class ReportSerializer(serializers.ModelSerializer):
     """Serializer for medical reports."""
     
