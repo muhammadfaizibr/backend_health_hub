@@ -151,10 +151,10 @@ class TranslationLanguage(models.Model):
     """Languages spoken by translator with proficiency levels."""
     
     PROFICIENCY_LEVEL_CHOICES = [
-        ('Native', _('Native')),
-        ('Fluent', _('Fluent')),
-        ('Advanced', _('Advanced')),
-        ('Intermediate', _('Intermediate')),
+        ('native', _('Native')),
+        ('fluent', _('Fluent')),
+        ('advanced', _('Advanced')),
+        ('intermediate', _('Intermediate')),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
