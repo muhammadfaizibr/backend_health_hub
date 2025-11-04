@@ -600,7 +600,7 @@ class ServiceFeeViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(fees, many=True)
         return Response(serializer.data)
 
-
+# base app
 class WalletViewSet(viewsets.ModelViewSet):
     """ViewSet for managing user wallets."""
     

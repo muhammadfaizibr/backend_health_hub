@@ -16,7 +16,7 @@ class PaymentMethodAdmin(admin.ModelAdmin):
         'status_badge', 'expires_at', 'created_at'
     ]
     list_filter = ['provider', 'type', 'is_default', 'created_at', 'deleted_at']
-    search_fields = ['user__email', 'user__first_name', 'brand']
+    search_fields = ['user__email', 'user__first_name', 'user__last_name', 'brand']
     readonly_fields = ['id', 'created_at', 'updated_at']
     autocomplete_fields = ['user']
     date_hierarchy = 'created_at'
@@ -118,6 +118,10 @@ class TransactionAdmin(admin.ModelAdmin):
         (_('Amount & Purpose'), {
             'fields': ('amount', 'currency', 'purpose', 'purpose_id', 'purpose_type')
         }),
+        (_('Receipt'), {
+            'fields': ('receipt_file',),
+            'classes': ('collapse',)
+        }),
         (_('Status'), {
             'fields': ('status', 'failure_reason', 'completed_at')
         }),
@@ -143,22 +147,22 @@ class TransactionAdmin(admin.ModelAdmin):
     
     def status_badge(self, obj):
         colors = {
-            'Pending': '#6c757d',
-            'Processing': '#17a2b8',
-            'Success': '#28a745',
-            'Failed': '#dc3545',
-            'Refunded': '#ffc107',
-            'Partially Refunded': '#fd7e14',
+            'pending': '#6c757d',
+            'processing': '#17a2b8',
+            'success': '#28a745',
+            'failed': '#dc3545',
+            'refunded': '#ffc107',
+            'partially_refunded': '#fd7e14',
         }
         color = colors.get(obj.status, '#6c757d')
         return format_html(
             '<span style="color: white; background-color: {}; padding: 3px 10px; border-radius: 3px;">{}</span>',
-            color, obj.status
+            color, obj.get_status_display()
         )
     status_badge.short_description = 'Status'
     
     def get_queryset(self, request):
-        return super().get_queryset(request).select_related('user', 'payment_method')
+        return super().get_queryset(request).select_related('user', 'payment_method', 'receipt_file')
 
 
 @admin.register(Refund)
@@ -191,7 +195,7 @@ class RefundAdmin(admin.ModelAdmin):
     
     actions = ['process_refunds']
     
-    def transaction_id(self,obj):
+    def transaction_id(self, obj):
         return str(obj.transaction.id)
     transaction_id.short_description = 'Transaction'
     
@@ -205,24 +209,24 @@ class RefundAdmin(admin.ModelAdmin):
     
     def status_badge(self, obj):
         colors = {
-            'Initiated': '#17a2b8',
-            'Processing': '#ffc107',
-            'Processed': '#28a745',
-            'Failed': '#dc3545',
+            'initiated': '#17a2b8',
+            'processing': '#ffc107',
+            'processed': '#28a745',
+            'failed': '#dc3545',
         }
         color = colors.get(obj.status, '#6c757d')
         return format_html(
             '<span style="color: white; background-color: {}; padding: 3px 10px; border-radius: 3px;">{}</span>',
-            color, obj.status
+            color, obj.get_status_display()
         )
     status_badge.short_description = 'Status'
     
     def process_refunds(self, request, queryset):
-        initiated_refunds = queryset.filter(status='Initiated')
+        initiated_refunds = queryset.filter(status='initiated')
         count = 0
         
         for refund in initiated_refunds:
-            refund.status = 'Processed'
+            refund.status = 'processed'
             refund.processed_at = timezone.now()
             refund.processed_by = request.user
             refund.save()
@@ -245,7 +249,7 @@ class AppointmentBillingAdmin(admin.ModelAdmin):
     ]
     list_filter = ['status', 'currency', 'created_at', 'billed_at']
     search_fields = [
-        'appointment__id', 'organization__user__email', 
+        'appointment__id', 'organization__organization_name', 'organization__user__email', 
         'doctor__user__email', 'translator__user__email'
     ]
     readonly_fields = ['id', 'total_amount', 'created_at', 'updated_at']
@@ -275,9 +279,9 @@ class AppointmentBillingAdmin(admin.ModelAdmin):
     appointment_id.short_description = 'Appointment'
     
     def organization_name(self, obj):
-        return obj.organization.user.email
+        return obj.organization.organization_name
     organization_name.short_description = 'Organization'
-    organization_name.admin_order_field = 'organization__user__email'
+    organization_name.admin_order_field = 'organization__organization_name'
     
     def doctor_name(self, obj):
         return obj.doctor.user.get_full_name()
@@ -291,20 +295,20 @@ class AppointmentBillingAdmin(admin.ModelAdmin):
     
     def status_badge(self, obj):
         colors = {
-            'Draft': '#6c757d',
-            'Billed': '#28a745',
-            'Cancelled': '#dc3545',
+            'draft': '#6c757d',
+            'billed': '#28a745',
+            'cancelled': '#dc3545',
         }
         color = colors.get(obj.status, '#6c757d')
         return format_html(
             '<span style="color: white; background-color: {}; padding: 3px 10px; border-radius: 3px;">{}</span>',
-            color, obj.status
+            color, obj.get_status_display()
         )
     status_badge.short_description = 'Status'
     
     def mark_as_billed(self, request, queryset):
-        draft_billings = queryset.filter(status='Draft')
-        updated = draft_billings.update(status='Billed', billed_at=timezone.now())
+        draft_billings = queryset.filter(status='draft')
+        updated = draft_billings.update(status='billed', billed_at=timezone.now())
         self.message_user(request, f"{updated} billing(s) marked as billed.")
     mark_as_billed.short_description = "Mark as billed"
     
@@ -317,13 +321,13 @@ class AppointmentBillingAdmin(admin.ModelAdmin):
 @admin.register(WalletLedger)
 class WalletLedgerAdmin(admin.ModelAdmin):
     list_display = [
-        'id', 'wallet_user', 'transaction_type_badge', 'amount', 
-        'balance_after', 'status_badge', 'created_at'
+        'id', 'wallet_user', 'transaction_type_badge', 'amount_display', 
+        'balance_after_display', 'status_badge', 'created_at'
     ]
     list_filter = ['transaction_type', 'status', 'balance_type', 'created_at']
-    search_fields = ['wallet__user__email', 'description']
-    readonly_fields = ['id', 'balance_before', 'balance_after', 'created_at']
-    autocomplete_fields = ['wallet', 'related_appointment', 'related_billing', 'related_payout', 'created_by']
+    search_fields = ['wallet__user__email', 'wallet__user__first_name', 'wallet__user__last_name', 'description']
+    readonly_fields = ['id', 'wallet', 'transaction_type', 'amount', 'balance_before', 'balance_after', 'balance_type', 'status', 'description', 'available_at', 'created_at']
+    autocomplete_fields = ['related_appointment', 'related_billing', 'related_payout', 'created_by']
     date_hierarchy = 'created_at'
     
     fieldsets = (
@@ -353,29 +357,48 @@ class WalletLedgerAdmin(admin.ModelAdmin):
     
     def transaction_type_badge(self, obj):
         colors = {
-            'Earning': '#28a745',
-            'Withdrawal': '#dc3545',
-            'Refund': '#17a2b8',
-            'Adjustment': '#ffc107',
+            'earning': '#28a745',
+            'withdrawal': '#dc3545',
+            'refund': '#17a2b8',
+            'adjustment': '#ffc107',
         }
         color = colors.get(obj.transaction_type, '#6c757d')
         return format_html(
             '<span style="color: white; background-color: {}; padding: 3px 10px; border-radius: 3px;">{}</span>',
-            color, obj.transaction_type
+            color, obj.get_transaction_type_display()
         )
     transaction_type_badge.short_description = 'Type'
     
+    def amount_display(self, obj):
+        amount = float(obj.amount)
+        color = 'green' if amount > 0 else 'red'
+        symbol = '+' if amount > 0 else ''
+        return format_html(
+            '<span style="color: {}; font-weight: bold;">{}{}</span>',
+            color, symbol, amount
+        )
+    amount_display.short_description = 'Amount'
+    amount_display.admin_order_field = 'amount'
+    
+    def balance_after_display(self, obj):
+        return format_html(
+            '<span style="font-weight: bold;">{}</span>',
+            float(obj.balance_after)
+        )
+    balance_after_display.short_description = 'Balance After'
+    balance_after_display.admin_order_field = 'balance_after'
+    
     def status_badge(self, obj):
         colors = {
-            'Pending': '#ffc107',
-            'Available': '#28a745',
-            'Withdrawn': '#6c757d',
-            'Refunded': '#17a2b8',
+            'pending': '#ffc107',
+            'available': '#28a745',
+            'withdrawn': '#6c757d',
+            'refunded': '#17a2b8',
         }
         color = colors.get(obj.status, '#6c757d')
         return format_html(
             '<span style="color: white; background-color: {}; padding: 3px 10px; border-radius: 3px;">{}</span>',
-            color, obj.status
+            color, obj.get_status_display()
         )
     status_badge.short_description = 'Status'
     
@@ -398,7 +421,7 @@ class PayoutRequestAdmin(admin.ModelAdmin):
         'requested_at', 'processed_at', 'processed_by_email'
     ]
     list_filter = ['status', 'currency', 'requested_at', 'processed_at']
-    search_fields = ['wallet__user__email', 'processing_notes', 'failure_reason']
+    search_fields = ['wallet__user__email', 'wallet__user__first_name', 'wallet__user__last_name', 'processing_notes', 'failure_reason']
     readonly_fields = ['id', 'requested_at', 'created_at', 'updated_at']
     autocomplete_fields = ['wallet', 'payment_method', 'transaction', 'processed_by']
     date_hierarchy = 'requested_at'
@@ -441,23 +464,23 @@ class PayoutRequestAdmin(admin.ModelAdmin):
     
     def status_badge(self, obj):
         colors = {
-            'Pending': '#ffc107',
-            'Processing': '#17a2b8',
-            'Completed': '#28a745',
-            'Failed': '#dc3545',
-            'Cancelled': '#6c757d',
+            'pending': '#ffc107',
+            'processing': '#17a2b8',
+            'completed': '#28a745',
+            'failed': '#dc3545',
+            'cancelled': '#6c757d',
         }
         color = colors.get(obj.status, '#6c757d')
         return format_html(
             '<span style="color: white; background-color: {}; padding: 3px 10px; border-radius: 3px;">{}</span>',
-            color, obj.status
+            color, obj.get_status_display()
         )
     status_badge.short_description = 'Status'
     
     def mark_as_completed(self, request, queryset):
-        pending_payouts = queryset.filter(status__in=['Pending', 'Processing'])
+        pending_payouts = queryset.filter(status__in=['pending', 'processing'])
         count = pending_payouts.update(
-            status='Completed',
+            status='completed',
             processed_at=timezone.now(),
             processed_by=request.user
         )
@@ -465,9 +488,9 @@ class PayoutRequestAdmin(admin.ModelAdmin):
     mark_as_completed.short_description = "Mark as completed"
     
     def mark_as_failed(self, request, queryset):
-        pending_payouts = queryset.filter(status__in=['Pending', 'Processing'])
+        pending_payouts = queryset.filter(status__in=['pending', 'processing'])
         count = pending_payouts.update(
-            status='Failed',
+            status='failed',
             processed_at=timezone.now(),
             processed_by=request.user
         )

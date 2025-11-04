@@ -7,6 +7,7 @@ import uuid
 from apps.base.models import User
 from apps.doctors.models import Profile as DoctorProfile
 from apps.translators.models import Profile as TranslatorProfile
+import secrets
 
 
 class Profile(models.Model):
@@ -153,14 +154,16 @@ class AppointmentTimeSlot(models.Model):
         start_datetime = datetime.combine(self.date, self.start_time)
         end_datetime = start_datetime + timedelta(minutes=self.duration)
         return end_datetime.time()
-    
+
+
 class Appointment(models.Model):
     """Patient appointment with doctor."""
     
     STATUS_CHOICES = [
         ('pending_confirmation', 'Pending Confirmation'),
         ('confirmed', 'Confirmed'),
-        ('rescheduling Requested', 'Rescheduling Requested'),
+        ('rescheduling_requested', 'Rescheduling Requested'),
+        ('in_progress', 'In Progress'),
         ('conducted', 'Conducted'),
         ('cancelled', 'Cancelled'),
     ]
@@ -172,20 +175,32 @@ class Appointment(models.Model):
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    case = models.ForeignKey(Case, on_delete=models.CASCADE, related_name='appointments')
-    time_slot = models.OneToOneField(AppointmentTimeSlot, on_delete=models.CASCADE, related_name='appointment')
-    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default='Pending Confirmation')
-    cancelled_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='appointments_cancelled')
+    case = models.ForeignKey('patients.Case', on_delete=models.CASCADE, related_name='appointments')
+    time_slot = models.OneToOneField('patients.AppointmentTimeSlot', on_delete=models.CASCADE, related_name='appointment')
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default='pending_confirmation')
+    
+    # Join tracking
+    patient_joined = models.BooleanField(default=False)
+    doctor_joined = models.BooleanField(default=False)
+    translator_joined = models.BooleanField(default=False)
+    patient_joined_at = models.DateTimeField(null=True, blank=True)
+    doctor_joined_at = models.DateTimeField(null=True, blank=True)
+    translator_joined_at = models.DateTimeField(null=True, blank=True)
+    
+    # Meeting link
+    meeting_link = models.CharField(max_length=500, blank=True)
+    
+    cancelled_by = models.ForeignKey('base.User', on_delete=models.SET_NULL, null=True, blank=True, related_name='appointments_cancelled')
     cancellation_reason = models.TextField(blank=True)
     is_translator_required = models.BooleanField(default=False)
-    translator_status = models.CharField(max_length=20, choices=TRANSLATOR_STATUS_CHOICES, default='Not Needed')
-    translator = models.ForeignKey(TranslatorProfile, on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_appointments')
+    translator_status = models.CharField(max_length=20, choices=TRANSLATOR_STATUS_CHOICES, default='not_needed')
+    translator = models.ForeignKey('translators.Profile', on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_appointments')
     is_follow_up = models.BooleanField(default=False)
     reason_for_visit = models.TextField()
     special_requests = models.TextField(blank=True)
     doctor_notes = models.TextField(blank=True)
     appointment_number = models.PositiveIntegerField(default=1)
-    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='appointments_created')
+    created_by = models.ForeignKey('base.User', on_delete=models.SET_NULL, null=True, related_name='appointments_created')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     conducted_at = models.DateTimeField(blank=True, null=True)
@@ -198,23 +213,125 @@ class Appointment(models.Model):
             models.Index(fields=['case', 'status']),
             models.Index(fields=['time_slot']),
             models.Index(fields=['status', 'created_at']),
+            models.Index(fields=['patient_joined', 'doctor_joined', 'translator_joined']),
         ]
         ordering = ['-created_at']
 
     def __str__(self):
         return f"Appointment #{self.appointment_number} - {self.case.title}"
 
+    def save(self, *args, **kwargs):
+        if not self.meeting_link:
+            self.meeting_link = self.generate_meeting_link()
+        super().save(*args, **kwargs)
+
+    def generate_meeting_link(self):
+        """Generate a dummy meeting link."""
+        token = secrets.token_urlsafe(32)
+        return f"https://meet.telemedicine.com/session/{token}"
+
     def clean(self):
         """Validate appointment data."""
         if self.time_slot and self.time_slot.is_booked and not self.pk:
             raise ValidationError(_('This time slot is already booked.'))
         
-        if self.is_translator_required and self.translator_status == 'Not Needed':
-            self.translator_status = 'Pending'
+        if self.is_translator_required and self.translator_status == 'not_needed':
+            self.translator_status = 'pending'
         
         if not self.is_translator_required:
-            self.translator_status = 'Not Needed'
+            self.translator_status = 'not_needed'
             self.translator = None
+
+    def is_join_button_enabled(self):
+        """Check if join button should be enabled (5 mins before to 10 mins after start)."""
+        if not self.time_slot:
+            return False
+        
+        from datetime import datetime, timedelta
+        
+        appointment_datetime = datetime.combine(
+            self.time_slot.date, 
+            self.time_slot.start_time
+        )
+        
+        if timezone.is_naive(appointment_datetime):
+            appointment_datetime = timezone.make_aware(appointment_datetime)
+        
+        now = timezone.now()
+        
+        enable_time = appointment_datetime - timedelta(minutes=5)
+        disable_time = appointment_datetime + timedelta(minutes=10)
+        
+        return enable_time <= now <= disable_time
+
+    def get_join_status_display(self):
+        """Get human-readable join status."""
+        if self.status == 'conducted':
+            return 'Conducted'
+        elif self.status == 'in_progress':
+            return 'In Progress'
+        elif self.patient_joined or self.doctor_joined or self.translator_joined:
+            return 'Participants Joining'
+        return self.get_status_display()
+
+    # apps/patients/models.py
+
+    def check_and_update_status(self):
+        """Check join status and update appointment status accordingly."""
+        from datetime import datetime, timedelta
+        
+        if self.status in ['conducted', 'cancelled']:
+            return
+        
+        appointment_datetime = datetime.combine(
+            self.time_slot.date, 
+            self.time_slot.start_time
+        )
+        
+        if timezone.is_naive(appointment_datetime):
+            appointment_datetime = timezone.make_aware(appointment_datetime)
+        
+        appointment_end = appointment_datetime + timedelta(minutes=self.time_slot.duration)
+        now = timezone.now()
+        
+        # Check if patient and doctor have joined
+        if self.patient_joined and self.doctor_joined:
+            # If translator is required, check if translator joined
+            if self.is_translator_required:
+                # If translator has joined, mark as in_progress
+                # If translator hasn't joined but time hasn't ended, still in_progress
+                # Both cases are handled the same way
+                if now < appointment_end:
+                    self.status = 'in_progress'
+                else:
+                    # Time ended, mark as conducted regardless of translator join status
+                    self.status = 'conducted'
+                    if not self.conducted_at:
+                        self.conducted_at = now
+            else:
+                # No translator required, just patient and doctor
+                if now < appointment_end:
+                    self.status = 'in_progress'
+                else:
+                    self.status = 'conducted'
+                    if not self.conducted_at:
+                        self.conducted_at = now
+        
+        # If appointment time has ended and someone joined
+        elif now > appointment_end and (self.patient_joined or self.doctor_joined):
+            self.status = 'conducted'
+            if not self.conducted_at:
+                self.conducted_at = now
+        
+        self.save(update_fields=['status', 'conducted_at', 'updated_at'])
+
+    def get_frontend_status_display(self):
+        """Get status for frontend display."""
+        if self.status == 'in_progress':
+            return 'Going On / Happening Now'
+        elif self.status == 'conducted':
+            return 'Conducted'
+        return self.get_status_display()
 
 
 class Report(models.Model):

@@ -12,6 +12,9 @@ from apps.files.serializers import FileSerializer
 from apps.doctors.models import Profile as DoctorProfile
 from apps.translators.models import Profile as TranslatorProfile
 from apps.files.models import File
+from apps.payments.models import AppointmentBilling, WalletLedger
+from apps.base.models import Wallet
+from decimal import Decimal
 
 
 
@@ -225,78 +228,296 @@ class AppointmentSerializer(serializers.ModelSerializer):
     cancelled_by = UserSerializer(read_only=True)
     created_by = UserSerializer(read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
+    join_status_display = serializers.CharField(source='get_join_status_display', read_only=True)
+    is_join_enabled = serializers.SerializerMethodField()
+
+    frontend_status = serializers.SerializerMethodField()
+    billing_info = serializers.SerializerMethodField()
 
     class Meta:
         model = Appointment
         fields = [
-            'id', 'case', 'case_id', 'time_slot', 'time_slot_id', 'status', 'status_display',
-            'cancelled_by', 'cancellation_reason', 'is_translator_required',
-            'translator_status', 'translator', 'translator_id', 'is_follow_up',
-            'reason_for_visit', 'special_requests', 'doctor_notes',
+            'id', 'case', 'case_id', 'time_slot', 'time_slot_id', 'status', 
+            'status_display', 'frontend_status', 'join_status_display', 
+            'is_join_enabled', 'cancelled_by', 'cancellation_reason',
+            'is_translator_required', 'translator_status', 'translator', 'translator_id',
+            'is_follow_up', 'reason_for_visit', 'special_requests', 'doctor_notes',
             'appointment_number', 'created_by', 'created_at', 'updated_at',
-            'conducted_at', 'cancelled_at'
+            'conducted_at', 'cancelled_at', 'meeting_link',
+            'patient_joined', 'doctor_joined', 'translator_joined',
+            'patient_joined_at', 'doctor_joined_at', 'translator_joined_at',
+            'billing_info'
         ]
         read_only_fields = [
             'id', 'appointment_number', 'cancelled_by', 'created_by',
-            'created_at', 'updated_at', 'conducted_at', 'cancelled_at'
+            'created_at', 'updated_at', 'conducted_at', 'cancelled_at',
+            'meeting_link', 'patient_joined_at', 'doctor_joined_at', 
+            'translator_joined_at', 'billing_info'
         ]
+    
+    def get_frontend_status(self, obj):
+        return obj.get_frontend_status_display()
+    
+    def get_is_join_enabled(self, obj):
+        """Check if the join button should be enabled for this appointment."""
+        return obj.is_join_button_enabled()
+    
+    def get_billing_info(self, obj):
+        if hasattr(obj, 'billing'):
+            return {
+                'id': str(obj.billing.id),
+                'total_amount': str(obj.billing.total_amount),
+                'status': obj.billing.status,
+                'organization': obj.billing.organization.user.email if obj.billing.organization else None
+            }
+        return None
 
-    def validate_time_slot_id(self, value):
-        """Ensure time slot exists and is available."""
-        try:
-            slot = AppointmentTimeSlot.objects.get(pk=value)
-            if slot.is_booked and not self.instance:
-                raise serializers.ValidationError("This time slot is already booked.")
-            if slot.date < timezone.now().date():
-                raise serializers.ValidationError("Cannot book appointments for past dates.")
-            return value
-        except AppointmentTimeSlot.DoesNotExist:
-            raise serializers.ValidationError("Time slot not found.")
+# apps/patients/serializers.py
 
-    def validate(self, attrs):
-        """Validate translator requirements."""
-        is_translator_required = attrs.get('is_translator_required', False)
-        translator_status = attrs.get('translator_status')
-        
-        if is_translator_required and translator_status == 'Not Needed':
-            attrs['translator_status'] = 'Pending'
-        elif not is_translator_required:
-            attrs['translator_status'] = 'Not Needed'
-            attrs['translator'] = None
-        
-        return attrs
+class JoinAppointmentSerializer(serializers.Serializer):
+    """Serializer for joining an appointment."""
+    
+    participant_type = serializers.ChoiceField(
+        choices=['patient', 'doctor', 'translator'],
+        required=True
+    )
 
     @transaction.atomic
-    def create(self, validated_data):
-        """Create appointment and mark slot as booked."""
-        case_id = validated_data.pop('case_id')
-        time_slot_id = validated_data.pop('time_slot_id')
-        translator_id = validated_data.pop('translator_id', None)
+    def update(self, instance, validated_data):
+        participant_type = validated_data['participant_type']
+        now = timezone.now()
         
-        # Get the actual objects
-        case = Case.objects.get(pk=case_id)
-        time_slot = AppointmentTimeSlot.objects.get(pk=time_slot_id)
-        translator = TranslatorProfile.objects.get(pk=translator_id) if translator_id else None
+        # Update join status
+        if participant_type == 'patient':
+            if not instance.patient_joined:
+                instance.patient_joined = True
+                instance.patient_joined_at = now
+        elif participant_type == 'doctor':
+            if not instance.doctor_joined:
+                instance.doctor_joined = True
+                instance.doctor_joined_at = now
+        elif participant_type == 'translator':
+            if not instance.translator_joined:
+                instance.translator_joined = True
+                instance.translator_joined_at = now
         
-        # Auto-increment appointment number
-        last_appointment = case.appointments.order_by('-appointment_number').first()
-        appointment_number = (last_appointment.appointment_number + 1) if last_appointment else 1
+        instance.save()
         
-        # Mark slot as booked
-        time_slot.is_booked = True
-        time_slot.save(update_fields=['is_booked'])
+        # Process payments ONLY if patient has joined
+        if instance.patient_joined:
+            self._process_payments(instance)
         
-        # Create the appointment with the actual objects
-        appointment = Appointment.objects.create(
-            case=case,
-            time_slot=time_slot,
-            translator=translator,
-            appointment_number=appointment_number,
-            **validated_data
+        # Update appointment status
+        instance.check_and_update_status()
+        
+        return instance
+
+    def _process_payments(self, appointment):
+        """Process payments when patient has joined."""
+        from apps.payments.models import AppointmentBilling, WalletLedger
+        from apps.organization.models import Profile as OrganizationProfile
+        from apps.base.models import Wallet
+        from decimal import Decimal
+        
+        # Check if billing already exists and is not draft
+        if hasattr(appointment, 'billing') and appointment.billing.status != 'draft':
+            return
+        
+        # Get doctor fee
+        doctor = appointment.case.doctor
+        doctor_fee = Decimal('0.00')
+        doctor_service_fees = doctor.user.service_fees.filter(is_active=True).first()
+        if doctor_service_fees:
+            doctor_fee = doctor_service_fees.fee
+        
+        # Get translator fee if required and assigned
+        translator_fee = Decimal('0.00')
+        if appointment.is_translator_required and appointment.translator:
+            translator_service_fees = appointment.translator.user.service_fees.filter(
+                is_active=True
+            ).first()
+            if translator_service_fees:
+                translator_fee = translator_service_fees.fee
+        
+        # Calculate platform fee (5%)
+        total_service_fee = doctor_fee + translator_fee
+        platform_fee_percentage = Decimal('5.00')
+        platform_fee = (total_service_fee * platform_fee_percentage / 100).quantize(Decimal('0.01'))
+        total_amount = doctor_fee + translator_fee + platform_fee
+        
+        # Find organization with enough credits
+        organization = OrganizationProfile.objects.select_for_update().filter(
+            current_credits_balance__gte=total_amount,
+        ).order_by('total_appointments_processed', '-current_credits_balance').first()
+        
+        if not organization:
+            raise serializers.ValidationError({
+                "detail": "No organization available with sufficient credits."
+            })
+        
+        # Get or create billing record
+        billing, created = AppointmentBilling.objects.get_or_create(
+            appointment=appointment,
+            defaults={
+                'organization': organization,
+                'doctor': doctor,
+                'translator': appointment.translator if appointment.is_translator_required else None,
+                'doctor_fee': doctor_fee,
+                'translator_fee': translator_fee,
+                'platform_fee': platform_fee,
+                'platform_fee_percentage': platform_fee_percentage,
+                'total_amount': total_amount,
+                'currency': 'PKR',
+                'status': 'draft'
+            }
         )
         
-        return appointment
+        if not created:
+            # Update existing billing if needed
+            billing.translator = appointment.translator if appointment.is_translator_required else None
+            billing.translator_fee = translator_fee
+            billing.platform_fee = platform_fee
+            billing.total_amount = total_amount
+            billing.save()
+        
+        # Create wallet entries only if patient and doctor have joined
+        if appointment.patient_joined and appointment.doctor_joined:
+            self._create_doctor_payment(appointment, billing, doctor_fee)
+            
+            # Create translator payment only if translator is required AND has joined
+            if appointment.is_translator_required and appointment.translator and appointment.translator_joined:
+                self._create_translator_payment(appointment, billing, translator_fee)
     
+    def _create_doctor_payment(self, appointment, billing, doctor_fee):
+        """Create pending wallet entry for doctor."""
+        from apps.payments.models import WalletLedger
+        from apps.base.models import Wallet
+        from datetime import timedelta
+        
+        doctor = appointment.case.doctor
+        doctor_wallet, _ = Wallet.objects.select_for_update().get_or_create(user=doctor.user)
+        
+        # Check if ledger entry already exists
+        existing_ledger = WalletLedger.objects.filter(
+            wallet=doctor_wallet,
+            related_appointment=appointment,
+            related_billing=billing,
+            transaction_type='earning'
+        ).exists()
+        
+        if not existing_ledger:
+            # Create pending wallet entry (available after 3 days)
+            available_at = timezone.now() + timedelta(days=3)
+            
+            WalletLedger.objects.create(
+                wallet=doctor_wallet,
+                transaction_type='earning',
+                amount=doctor_fee,
+                balance_before=doctor_wallet.pending_balance,
+                balance_after=doctor_wallet.pending_balance + doctor_fee,
+                balance_type='pending',
+                status='pending',
+                related_appointment=appointment,
+                related_billing=billing,
+                description=f'Earning from Appointment #{appointment.appointment_number}',
+                available_at=available_at
+            )
+            
+            # Update wallet balances
+            doctor_wallet.pending_balance += doctor_fee
+            doctor_wallet.total_lifetime_earnings += doctor_fee
+            doctor_wallet.save()
+            
+            # Deduct from organization
+            self._deduct_from_organization(billing, doctor_fee, appointment, 'doctor')
+    
+    def _create_translator_payment(self, appointment, billing, translator_fee):
+        """Create pending wallet entry for translator."""
+        from apps.payments.models import WalletLedger
+        from apps.base.models import Wallet
+        from datetime import timedelta
+        
+        if not appointment.translator:
+            return
+        
+        translator_wallet, _ = Wallet.objects.select_for_update().get_or_create(
+            user=appointment.translator.user
+        )
+        
+        # Check if ledger entry already exists
+        existing_ledger = WalletLedger.objects.filter(
+            wallet=translator_wallet,
+            related_appointment=appointment,
+            related_billing=billing,
+            transaction_type='earning'
+        ).exists()
+        
+        if not existing_ledger:
+            # Create pending wallet entry (available after 3 days)
+            available_at = timezone.now() + timedelta(days=3)
+            
+            WalletLedger.objects.create(
+                wallet=translator_wallet,
+                transaction_type='earning',
+                amount=translator_fee,
+                balance_before=translator_wallet.pending_balance,
+                balance_after=translator_wallet.pending_balance + translator_fee,
+                balance_type='pending',
+                status='pending',
+                related_appointment=appointment,
+                related_billing=billing,
+                description=f'Translation fee for Appointment #{appointment.appointment_number}',
+                available_at=available_at
+            )
+            
+            # Update wallet balances
+            translator_wallet.pending_balance += translator_fee
+            translator_wallet.total_lifetime_earnings += translator_fee
+            translator_wallet.save()
+            
+            # Deduct from organization
+            self._deduct_from_organization(billing, translator_fee, appointment, 'translator')
+    
+    def _deduct_from_organization(self, billing, amount, appointment, service_type):
+        """Deduct amount from organization credits."""
+        from apps.payments.models import WalletLedger
+        from apps.base.models import Wallet
+        
+        org_wallet, _ = Wallet.objects.select_for_update().get_or_create(
+            user=billing.organization.user
+        )
+        
+        # Check if deduction already exists
+        existing_deduction = WalletLedger.objects.filter(
+            wallet=org_wallet,
+            related_appointment=appointment,
+            related_billing=billing,
+            description__contains=service_type
+        ).exists()
+        
+        if not existing_deduction:
+            WalletLedger.objects.create(
+                wallet=org_wallet,
+                transaction_type='adjustment',
+                amount=-amount,
+                balance_before=org_wallet.available_balance,
+                balance_after=org_wallet.available_balance - amount,
+                balance_type='available',
+                status='available',
+                related_appointment=appointment,
+                related_billing=billing,
+                description=f'Payment for Appointment #{appointment.appointment_number} ({service_type})'
+            )
+            
+            # Update organization wallet
+            org_wallet.available_balance -= amount
+            org_wallet.save()
+            
+            # Update organization credits
+            org_profile = billing.organization
+            org_profile.current_credits_balance -= amount
+            org_profile.save()
+
 class CreateAppointmentSerializer(serializers.Serializer):
     """Serializer for creating appointment with automatic case and time slot creation."""
     
@@ -564,6 +785,59 @@ class CreateAppointmentSerializer(serializers.Serializer):
             is_follow_up=validated_data.get('is_follow_up', False),
             appointment_number=appointment_number,
             created_by=request.user
+        )
+        
+        from apps.payments.models import AppointmentBilling
+        from apps.organization.models import Profile as OrganizationProfile
+        from apps.base.models import Wallet
+        from decimal import Decimal
+
+        # Get doctor's service fee
+        doctor_fee = Decimal('0.00')
+        doctor_service_fees = doctor.user.service_fees.filter(  # Changed from doctor.service_fees
+            is_active=True
+        ).first()
+        if doctor_service_fees:
+            doctor_fee = doctor_service_fees.fee
+
+        # Get translator fee if required
+        translator_fee = Decimal('0.00')
+        if appointment.is_translator_required and appointment.translator:
+            translator_service_fees = appointment.translator.user.service_fees.filter(  # Changed from appointment.translator.service_fees
+                is_active=True
+            ).first()
+            if translator_service_fees:
+                translator_fee = translator_service_fees.fee
+
+        # Calculate platform fee (5%)
+        total_service_fee = doctor_fee + translator_fee
+        platform_fee_percentage = Decimal('5.00')
+        platform_fee = (total_service_fee * platform_fee_percentage / 100).quantize(Decimal('0.01'))
+        total_amount = doctor_fee + translator_fee + platform_fee
+
+        # Find organization with enough credits and lowest appointments
+        organization = OrganizationProfile.objects.select_for_update().filter(
+            current_credits_balance__gte=total_amount,
+        ).order_by('total_appointments_processed', '-current_credits_balance').first()
+        
+        if not organization:
+            raise serializers.ValidationError({
+                "detail": "No organization available with sufficient credits to process this appointment."
+            })
+        
+        # Create billing record
+        billing = AppointmentBilling.objects.create(
+            appointment=appointment,
+            organization=organization,
+            doctor=doctor,
+            translator=appointment.translator if appointment.is_translator_required else None,
+            doctor_fee=doctor_fee,
+            translator_fee=translator_fee,
+            platform_fee=platform_fee,
+            platform_fee_percentage=platform_fee_percentage,
+            total_amount=total_amount,
+            currency='PKR',
+            status='draft'
         )
         
         return appointment

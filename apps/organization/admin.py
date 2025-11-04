@@ -9,14 +9,15 @@ from .models import Profile, CreditPackage, CreditsLedger, PackagePurchase
 class ProfileAdmin(admin.ModelAdmin):
     list_display = [
         'organization_name', 'user_email', 'size', 'credits_balance_display',
-        'currency', 'registration_number', 'created_at'
+        'currency', 'registration_number', 'total_appointments_processed', 'created_at'
     ]
     list_filter = ['size', 'currency', 'created_at']
     search_fields = [
         'organization_name', 'user__email', 'user__first_name',
         'user__last_name', 'registration_number', 'area_of_focus'
     ]
-    readonly_fields = ['id', 'version', 'created_at', 'updated_at']
+    autocomplete_fields = ['user']
+    readonly_fields = ['id', 'version', 'total_appointments_processed', 'created_at', 'updated_at']
     date_hierarchy = 'created_at'
     
     fieldsets = (
@@ -28,6 +29,10 @@ class ProfileAdmin(admin.ModelAdmin):
         }),
         ('Credits & Finance', {
             'fields': ('current_credits_balance', 'currency', 'version')
+        }),
+        ('Statistics', {
+            'fields': ('total_appointments_processed',),
+            'classes': ('collapse',)
         }),
         ('Timestamps', {
             'fields': ('created_at', 'updated_at'),
@@ -62,7 +67,6 @@ class CreditPackageAdmin(admin.ModelAdmin):
     ]
     list_filter = ['is_active', 'currency', 'created_at']
     search_fields = ['name', 'description']
-    # Remove list_editable or ensure fields are in list_display
     readonly_fields = ['id', 'created_at', 'updated_at', 'purchase_stats']
     ordering = ['display_order', 'name']
     
@@ -98,7 +102,7 @@ class CreditPackageAdmin(admin.ModelAdmin):
     is_active_badge.short_description = 'Status'
 
     def total_purchases(self, obj):
-        count = obj.purchases.filter(status='Completed').count()
+        count = obj.purchases.filter(status='completed').count()
         return format_html('<span style="font-weight: bold;">{}</span>', count)
     total_purchases.short_description = 'Total Sales'
 
@@ -106,7 +110,7 @@ class CreditPackageAdmin(admin.ModelAdmin):
         if not obj.pk:
             return "Save the package first to see statistics."
         
-        stats = obj.purchases.filter(status='Completed').aggregate(
+        stats = obj.purchases.filter(status='completed').aggregate(
             total_sales=Sum('price_paid'),
             total_credits_sold=Sum('credits_amount')
         )
@@ -115,8 +119,8 @@ class CreditPackageAdmin(admin.ModelAdmin):
         <div style="padding: 10px; background: #f5f5f5; border-radius: 5px;">
             <p><strong>Total Sales:</strong> {stats['total_sales'] or 0} {obj.currency}</p>
             <p><strong>Total Credits Sold:</strong> {stats['total_credits_sold'] or 0}</p>
-            <p><strong>Completed Purchases:</strong> {obj.purchases.filter(status='Completed').count()}</p>
-            <p><strong>Pending Purchases:</strong> {obj.purchases.filter(status='Pending').count()}</p>
+            <p><strong>Completed Purchases:</strong> {obj.purchases.filter(status='completed').count()}</p>
+            <p><strong>Pending Purchases:</strong> {obj.purchases.filter(status='pending').count()}</p>
         </div>
         """
         return format_html(html)
@@ -126,7 +130,7 @@ class CreditPackageAdmin(admin.ModelAdmin):
 @admin.register(CreditsLedger)
 class CreditsLedgerAdmin(admin.ModelAdmin):
     list_display = [
-        'organization', 'transaction_type_badge', 'amount_display',
+        'organization_name', 'transaction_type_badge', 'amount_display',
         'balance_after_display', 'created_at'
     ]
     list_filter = ['transaction_type', 'created_at']
@@ -134,6 +138,7 @@ class CreditsLedgerAdmin(admin.ModelAdmin):
         'organization__organization_name', 'organization__user__email',
         'description'
     ]
+    autocomplete_fields = ['organization', 'created_by', 'related_appointment', 'related_purchase', 'related_transaction']
     readonly_fields = [
         'id', 'organization', 'transaction_type', 'amount',
         'balance_before', 'balance_after', 'description',
@@ -152,7 +157,8 @@ class CreditsLedgerAdmin(admin.ModelAdmin):
         ('Related Records', {
             'fields': (
                 'related_appointment', 'related_purchase', 'related_transaction'
-            )
+            ),
+            'classes': ('collapse',)
         }),
         ('Metadata', {
             'fields': ('created_by', 'created_at'),
@@ -165,19 +171,24 @@ class CreditsLedgerAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+    
+    def organization_name(self, obj):
+        return obj.organization.organization_name
+    organization_name.short_description = 'Organization'
+    organization_name.admin_order_field = 'organization__organization_name'
 
     def transaction_type_badge(self, obj):
         colors = {
-            'Purchase': 'green',
-            'Deduction': 'red',
-            'Refund': 'orange',
-            'Adjustment': 'blue',
-            'Bonus': 'purple'
+            'purchase': 'green',
+            'deduction': 'red',
+            'refund': 'orange',
+            'adjustment': 'blue',
+            'bonus': 'purple'
         }
         color = colors.get(obj.transaction_type, 'black')
         return format_html(
             '<span style="color: {}; font-weight: bold;">{}</span>',
-            color, obj.transaction_type
+            color, obj.get_transaction_type_display()
         )
     transaction_type_badge.short_description = 'Type'
 
@@ -210,20 +221,20 @@ class CreditsLedgerAdmin(admin.ModelAdmin):
 @admin.register(PackagePurchase)
 class PackagePurchaseAdmin(admin.ModelAdmin):
     list_display = [
-        'organization', 'credit_package', 'status_badge',
-        'credits_amount', 'price_paid_display', 'purchased_at'
+        'organization_name', 'credit_package', 'status_badge',
+        'credits_amount', 'price_paid_display', 'purchased_at', 'created_at'
     ]
     list_filter = ['status', 'currency', 'created_at', 'purchased_at']
     search_fields = [
         'organization__organization_name', 'organization__user__email',
         'credit_package__name'
     ]
+    autocomplete_fields = ['organization', 'credit_package', 'purchased_by', 'payment_transaction']
     readonly_fields = [
         'id', 'organization', 'credit_package', 'credits_amount',
         'price_paid', 'currency', 'payment_transaction',
         'purchased_by', 'purchased_at', 'created_at', 'updated_at'
     ]
-    # Remove list_editable since status is not in list_display as editable field
     date_hierarchy = 'created_at'
     
     fieldsets = (
@@ -241,18 +252,23 @@ class PackagePurchaseAdmin(admin.ModelAdmin):
             'classes': ('collapse',)
         }),
     )
+    
+    def organization_name(self, obj):
+        return obj.organization.organization_name
+    organization_name.short_description = 'Organization'
+    organization_name.admin_order_field = 'organization__organization_name'
 
     def status_badge(self, obj):
         colors = {
-            'Pending': 'orange',
-            'Completed': 'green',
-            'Failed': 'red',
-            'Refunded': 'purple'
+            'pending': 'orange',
+            'completed': 'green',
+            'failed': 'red',
+            'refunded': 'purple'
         }
         color = colors.get(obj.status, 'black')
         return format_html(
             '<span style="color: {}; font-weight: bold;">{}</span>',
-            color, obj.status
+            color, obj.get_status_display()
         )
     status_badge.short_description = 'Status'
 
@@ -271,9 +287,8 @@ class PackagePurchaseAdmin(admin.ModelAdmin):
         if change and 'status' in form.changed_data:
             old_status = PackagePurchase.objects.get(pk=obj.pk).status
             
-            # Handle status change through serializer logic
             from django.utils import timezone
-            if old_status == 'Pending' and obj.status == 'Completed':
+            if old_status == 'pending' and obj.status == 'completed':
                 obj.purchased_at = timezone.now()
         
         super().save_model(request, obj, form, change)

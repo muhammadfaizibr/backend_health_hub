@@ -5,6 +5,7 @@ from .views import (
     PaymentMethodViewSet, TransactionViewSet, RefundViewSet,
     AppointmentBillingViewSet, WalletLedgerViewSet, PayoutRequestViewSet
 )
+from .views import PackagePurchaseView
 
 app_name = 'billing'
 
@@ -18,4 +19,6 @@ router.register(r'payout-requests', PayoutRequestViewSet, basename='payout-reque
 
 urlpatterns = [
     path('', include(router.urls)),
+    path('purchase-package/', PackagePurchaseView.as_view(), name='purchase-package'),
+    path('purchase-package/<uuid:purchase_id>/confirm/', PackagePurchaseView.as_view(), name='confirm-purchase'),
 ]

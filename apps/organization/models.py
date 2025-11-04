@@ -46,6 +46,8 @@ class Profile(models.Model):
         validators=[MinValueValidator(Decimal('0.00'))]
     )
     currency = models.CharField(max_length=3, choices=CURRENCY_CHOICES, default='USD')
+    total_appointments_processed = models.IntegerField(default=0)
+
     version = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -55,6 +57,8 @@ class Profile(models.Model):
         indexes = [
             models.Index(fields=['user']),
             models.Index(fields=['registration_number']),
+            models.Index(fields=['current_credits_balance', 'total_appointments_processed']),
+
         ]
         verbose_name = 'Organization Profile'
         verbose_name_plural = 'Organization Profiles'

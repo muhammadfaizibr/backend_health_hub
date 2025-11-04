@@ -9,7 +9,7 @@ from .models import (
 )
 from .serializers import (
     ProfileSerializer, MedicalHistorySerializer, CaseSerializer,
-    AppointmentTimeSlotSerializer, AppointmentSerializer, CreateAppointmentSerializer, ReportSerializer 
+    AppointmentTimeSlotSerializer, AppointmentSerializer, CreateAppointmentSerializer, ReportSerializer, JoinAppointmentSerializer
 )
 from apps.base.models import User
 from apps.doctors.models import Profile as DoctorProfile
@@ -131,9 +131,11 @@ class AppointmentTimeSlotViewSet(viewsets.ModelViewSet):
         """Set the created_by field to the current user."""
         serializer.save(created_by=self.request.user)
 
+
 class AppointmentViewSet(viewsets.ModelViewSet):
     queryset = Appointment.objects.select_related(
-        'case', 'time_slot', 'translator', 'cancelled_by', 'created_by'
+        'case', 'time_slot', 'translator', 'cancelled_by', 'created_by',
+        'case__patient__user', 'case__doctor__user'
     ).prefetch_related('case__patient', 'case__doctor')
     serializer_class = AppointmentSerializer
     permission_classes = [IsAuthenticated]
@@ -141,26 +143,25 @@ class AppointmentViewSet(viewsets.ModelViewSet):
     filterset_fields = ['status', 'is_follow_up', 'case']
 
     def get_queryset(self):
-        if self.request.user.role == 'Patient':
-            return self.queryset.filter(case__patient__user=self.request.user)
-        elif self.request.user.role == 'Doctor':
-            doctor = DoctorProfile.objects.filter(user=self.request.user).first()
+        user = self.request.user
+        
+        if user.role == 'Patient':
+            return self.queryset.filter(case__patient__user=user)
+        elif user.role == 'Doctor':
+            doctor = DoctorProfile.objects.filter(user=user).first()
             if doctor:
                 return self.queryset.filter(case__doctor=doctor)
             return self.queryset.none()
-        elif self.request.user.role == 'Translator':
-            trans = TranslatorProfile.objects.filter(user=self.request.user).first()
-            if trans:
-                return self.queryset.filter(translator=trans)
+        elif user.role == 'Translator':
+            translator = TranslatorProfile.objects.filter(user=user).first()
+            if translator:
+                return self.queryset.filter(translator=translator)
             return self.queryset.none()
-        return self.queryset.all() if self.request.user.is_staff else self.queryset.none()
+        return self.queryset.all() if user.is_staff else self.queryset.none()
 
     @action(detail=False, methods=['post'], url_path='book')
     def book_appointment(self, request):
-        """
-        Book an appointment with automatic case and time slot creation.
-        This endpoint handles the entire booking process in a single transaction.
-        """
+        """Book an appointment with automatic case and time slot creation."""
         serializer = CreateAppointmentSerializer(
             data=request.data,
             context={'request': request}
@@ -168,39 +169,87 @@ class AppointmentViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         appointment = serializer.save()
         
-        # Return the created appointment with full details
         response_serializer = AppointmentSerializer(appointment)
         return Response(
             response_serializer.data,
             status=status.HTTP_201_CREATED
         )
-    
+
+    @action(detail=True, methods=['post'])
+    def join(self, request, pk=None):
+        """Join an appointment as patient, doctor, or translator."""
+        appointment = self.get_object()
+        
+        # Check if appointment is in valid status
+        if appointment.status not in ['confirmed', 'in_progress']:
+            return Response(
+                {'error': 'Cannot join this appointment. Invalid status.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if join button is enabled (time window)
+        if not appointment.is_join_button_enabled():
+            return Response(
+                {'error': 'Join window is not active. You can join 5 minutes before the appointment.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        serializer = JoinAppointmentSerializer(
+            appointment,
+            data=request.data,
+            context={'request': request}
+        )
+        serializer.is_valid(raise_exception=True)
+        appointment = serializer.save()
+        
+        response_serializer = AppointmentSerializer(appointment)
+        return Response(response_serializer.data)
 
     @action(detail=True, methods=['post'])
     def confirm(self, request, pk=None):
+        """Confirm a pending appointment."""
         appointment = self.get_object()
-        if appointment.status != 'pending_confirmation' or request.user != appointment.created_by:
-            return Response({'error': 'Cannot confirm this appointment.'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if appointment.status != 'pending_confirmation':
+            return Response(
+                {'error': 'Appointment is not pending confirmation.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         appointment.status = 'confirmed'
         appointment.save()
+        
+        # Send confirmation email
         from apps.base.utils.email import send_appointment_confirmation
-        # Get doctor from the case
         doctor_user = appointment.case.doctor.user
         send_appointment_confirmation(appointment, appointment.case.patient, doctor_user)
+        
         return Response(AppointmentSerializer(appointment).data)
 
     @action(detail=True, methods=['post'])
     def cancel(self, request, pk=None):
+        """Cancel an appointment."""
         appointment = self.get_object()
+        
+        if appointment.status == 'cancelled':
+            return Response(
+                {'error': 'Appointment is already cancelled.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
         reason = request.data.get('cancellation_reason', request.data.get('reason', ''))
+        
         appointment.status = 'cancelled'
         appointment.cancellation_reason = reason
         appointment.cancelled_by = request.user
         appointment.cancelled_at = timezone.now()
+        
+        # Free up the time slot
         appointment.time_slot.is_booked = False
         appointment.time_slot.save()
+        
         appointment.save()
+        
         return Response(AppointmentSerializer(appointment).data)
 
     def perform_create(self, serializer):

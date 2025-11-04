@@ -10,7 +10,7 @@ from django.shortcuts import get_object_or_404
 from decimal import Decimal
 
 from .models import (
-    PaymentMethod, Transaction, Refund, AppointmentBilling, WalletLedger, PayoutRequest
+    PaymentMethod, Transaction, Refund, AppointmentBilling, WalletLedger, PayoutRequest, 
 )
 from .serializers import (
     PaymentMethodSerializer, TransactionSerializer, RefundSerializer,
@@ -21,6 +21,9 @@ from apps.base.models import Wallet
 from apps.organization.models import Profile as OrganizationProfile, CreditsLedger
 from django.db import models
 from rest_framework.serializers import ValidationError
+from .services.stripe_service import StripeService
+from apps.organization.models import CreditPackage, PackagePurchase
+from rest_framework.views import APIView
 
 
 class PaymentMethodViewSet(viewsets.ModelViewSet):
@@ -49,7 +52,7 @@ class PaymentMethodViewSet(viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         """Soft delete payment method."""
         if instance.is_default:
-            raise ValidationError("Cannot delete default payment method. Set another as default first.")
+            raise ValidationError({"non_field_errors":"Cannot delete default payment method. Set another as default first."})
         
         instance.deleted_at = timezone.now()
         instance.save()
@@ -309,6 +312,47 @@ class AppointmentBillingViewSet(viewsets.ModelViewSet):
         
         return Response({'message': 'Billing cancelled successfully.'})
 
+            
+    @action(detail=False, methods=['get'])
+    def organization_appointments(self, request):
+        """Get appointments for organization's billings."""
+        if not hasattr(request.user, 'role') or request.user.role != 'Organization':
+            return Response(
+                {'error': 'Only organizations can access this endpoint.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        org = OrganizationProfile.objects.filter(user=request.user).first()
+        if not org:
+            return Response(
+                {'error': 'Organization profile not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        billings = self.queryset.filter(organization=org).select_related(
+            'appointment__case__patient__user',
+            'appointment__case__doctor__user',
+            'appointment__time_slot'
+        )
+        
+        appointments_data = []
+        for billing in billings:
+            appointment = billing.appointment
+            appointments_data.append({
+                'id': appointment.id,
+                'billing_id': billing.id,
+                'patient_name': appointment.case.patient.user.get_full_name(),
+                'doctor_name': appointment.case.doctor.user.get_full_name(),
+                'date': appointment.time_slot.date,
+                'time': appointment.time_slot.start_time,
+                'status': appointment.status,
+                'billing_status': billing.status,
+                'total_amount': billing.total_amount,
+                'currency': billing.currency,
+            })
+        
+        return Response(appointments_data)
+
 
 class WalletLedgerViewSet(viewsets.ReadOnlyModelViewSet):
     """
@@ -490,3 +534,179 @@ class PayoutRequestViewSet(viewsets.ModelViewSet):
         payout.save()
         
         return Response({'message': 'Payout request cancelled successfully.'})
+
+
+
+class PackagePurchaseView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    @transaction.atomic
+    def post(self, request):
+        """Purchase a credit package using Stripe."""
+        if request.user.role != 'Organization':
+            return Response(
+                {'error': 'Only organizations can purchase packages.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        package_id = request.data.get('package_id')
+        
+        try:
+            # Get organization profile
+            org = OrganizationProfile.objects.select_for_update().get(user=request.user)
+            
+            # Get credit package
+            package = CreditPackage.objects.get(id=package_id, is_active=True)
+            
+            # Create idempotency key
+            idempotency_key = f"purchase_{org.id}_{package.id}_{int(timezone.now().timestamp() * 1000)}"
+            
+            # Check if transaction already exists
+            existing_transaction = Transaction.objects.filter(
+                idempotency_key=idempotency_key
+            ).first()
+            
+            if existing_transaction:
+                return Response(
+                    {'error': 'Transaction already processed.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Create Stripe payment intent
+            stripe_service = StripeService()
+            payment_intent = stripe_service.create_payment_intent(
+                amount=package.price,
+                currency='pkr',
+                metadata={
+                    'organization_id': str(org.id),
+                    'package_id': str(package.id),
+                    'credits_amount': str(package.credits_amount),
+                }
+            )
+            
+            # Create transaction record
+            transaction_obj = Transaction.objects.create(
+                transaction_id_gateway=payment_intent.id,
+                idempotency_key=idempotency_key,
+                user=request.user,
+                amount=package.price,
+                currency='PKR',
+                status='pending',
+                purpose='credit_purchase',
+                purpose_id=package.id,
+                purpose_type='package_purchase',
+                gateway_response={'payment_intent_id': payment_intent.id}
+            )
+            
+            # Create package purchase record with correct field names
+            purchase = PackagePurchase.objects.create(
+                organization=org,
+                credit_package=package,  # Correct field name
+                credits_amount=package.credits_amount,  # Correct field name
+                price_paid=package.price,  # Correct field name
+                currency='PKR',
+                payment_transaction=transaction_obj,  # Correct field name
+                status='pending',
+                purchased_by=request.user
+            )
+            
+            return Response({
+                'client_secret': payment_intent.client_secret,
+                'purchase_id': str(purchase.id),
+                'transaction_id': str(transaction_obj.id),
+            })
+            
+        except OrganizationProfile.DoesNotExist:
+            return Response(
+                {'error': 'Organization profile not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except CreditPackage.DoesNotExist:
+            return Response(
+                {'error': 'Credit package not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @transaction.atomic
+    def patch(self, request, purchase_id):
+        """Confirm package purchase after Stripe payment."""
+        try:
+            purchase = PackagePurchase.objects.select_for_update().get(
+                id=purchase_id,
+                organization__user=request.user
+            )
+            
+            if purchase.status != 'pending':
+                return Response(
+                    {'error': 'Purchase already processed.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Verify payment with Stripe
+            stripe_service = StripeService()
+            payment_intent = stripe_service.confirm_payment(
+                purchase.payment_transaction.transaction_id_gateway
+            )
+            
+            if payment_intent.status != 'succeeded':
+                return Response(
+                    {'error': f'Payment not successful. Status: {payment_intent.status}'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Update transaction
+            purchase.payment_transaction.status = 'success'
+            purchase.payment_transaction.completed_at = timezone.now()
+            purchase.payment_transaction.save()
+            
+            # Update purchase
+            purchase.status = 'completed'
+            purchase.purchased_at = timezone.now()
+            purchase.save()
+            
+            # Update organization credits
+            org = purchase.organization
+            balance_before = org.current_credits_balance
+            org.current_credits_balance += purchase.credits_amount
+            org.version = (org.version or 0) + 1
+            org.save()
+            
+            # Create credits ledger entry with correct field name
+            CreditsLedger.objects.create(
+                organization=org,
+                transaction_type='purchase',
+                amount=purchase.credits_amount,
+                balance_before=balance_before,
+                balance_after=org.current_credits_balance,
+                description=f'Purchased {purchase.credits_amount} credits - {purchase.credit_package.name}',
+                related_purchase=purchase,  # Correct field name
+                related_transaction=purchase.payment_transaction,
+                created_by=request.user
+            )
+            
+            return Response({
+                'message': 'Package purchased successfully.',
+                'credits_balance': float(org.current_credits_balance),
+                'credits_added': float(purchase.credits_amount),
+            })
+            
+        except PackagePurchase.DoesNotExist:
+            return Response(
+                {'error': 'Purchase not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except Exception as e:
+            # Log the full error for debugging
+            import traceback
+            print(f"Purchase confirmation error: {str(e)}")
+            print(traceback.format_exc())
+            
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
